@@ -2,7 +2,9 @@
   "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/dist/frontend/browser",
   "framework": "angular",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./frontend ./vercel.json",
   "rewrites": [
+
     {
       "source": "/(.*)",
       "destination": "/index.html"
