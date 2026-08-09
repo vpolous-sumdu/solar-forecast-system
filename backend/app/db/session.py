@@ -5,7 +5,8 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 load_dotenv()
 
-# Отримуємо Connection Strings з .env (дотримуємося neon-postgres skill: Pooled для API, Direct для таблиць)
+# Отримуємо Connection Strings з .env (Pooled для API, Direct для міграцій)
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 DIRECT_DATABASE_URL = os.getenv("DIRECT_DATABASE_URL")
 

@@ -6,7 +6,8 @@ from app.db.session import get_db
 from app.models.station import Station
 from app.schemas.station import StationCreate, StationResponse
 
-# Дотримуємося fastapi skill: Використовуємо Annotated для залежностей
+# Використовуємо Annotated для залежностей сесій СУБД
+
 DbSessionDep = Annotated[Session, Depends(get_db)]
 
 router = APIRouter(
