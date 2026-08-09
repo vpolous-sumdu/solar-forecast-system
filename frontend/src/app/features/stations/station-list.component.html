@@ -1,0 +1,53 @@
+<div class="container">
+  <header class="header">
+    <h1 class="header-title">Сонячні електростанції (СЕС)</h1>
+  </header>
+
+  <main>
+    <div class="controls">
+      <h2 class="section-title">Список станцій ({{ stations().length }})</h2>
+      <button class="btn" (click)="loadStations()">Оновити</button>
+    </div>
+
+    @if (error()) {
+      <div class="status-error">Помилка: {{ error() }}</div>
+    }
+
+    <div class="table-wrapper">
+      <table class="stations-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Назва</th>
+            <th>Потужність</th>
+            <th>Широта</th>
+            <th>Довгота</th>
+          </tr>
+        </thead>
+        <tbody>
+          @if (loading()) {
+            @for (i of [1, 2, 3, 4, 5]; track i) {
+              <tr>
+                <td><div class="skeleton-box col-id"></div></td>
+                <td><div class="skeleton-box col-name"></div></td>
+                <td><div class="skeleton-box col-power"></div></td>
+                <td><div class="skeleton-box col-coord"></div></td>
+                <td><div class="skeleton-box col-coord"></div></td>
+              </tr>
+            }
+          } @else {
+            @for (st of stations(); track st.id) {
+              <tr>
+                <td class="station-id">#{{ st.id }}</td>
+                <td>{{ st.name }}</td>
+                <td><span class="badge-capacity">{{ st.installed_capacity_kw }} кВт</span></td>
+                <td>{{ st.latitude }}</td>
+                <td>{{ st.longitude }}</td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
