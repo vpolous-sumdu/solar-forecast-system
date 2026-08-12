@@ -122,6 +122,8 @@ def fetch_and_save_owm_weather(db: Session, station_id: int) -> int:
     if not weather_list:
         return 0
 
+    tz_offset_sec = int(data.get("city", {}).get("timezone", 10800))
+
     # 1. Збираємо точки від OpenWeatherMap (timestamp, temp, cloud, pressure, humidity, wind)
     owm_points = []
     for item in weather_list:
@@ -144,24 +146,27 @@ def fetch_and_save_owm_weather(db: Session, station_id: int) -> int:
     humidities = np.array([p["humidity"] for p in owm_points])
     winds = np.array([p["wind"] for p in owm_points])
 
-    # 2. Формуємо 24 погодинні точки строго на ЗАВТРА (00:00 - 23:00)
-    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).date()
+    # 2. Формуємо 24 погодинні точки строго за МІСЦЕВИМ часом на ЗАВТРА (00:00 - 23:00)
+    now_utc = datetime.now(timezone.utc)
+    now_local = now_utc + timedelta(seconds=tz_offset_sec)
+    tomorrow_local = (now_local + timedelta(days=1)).date()
     saved_count = 0
 
     for hour in range(24):
-        target_dt = datetime(tomorrow.year, tomorrow.month, tomorrow.day, hour, 0, 0, tzinfo=timezone.utc)
-        target_ts = target_dt.timestamp()
+        target_dt_local = datetime(tomorrow_local.year, tomorrow_local.month, tomorrow_local.day, hour, 0, 0, tzinfo=timezone.utc)
+        # Відповідний UTC timestamp для інтерполяції з OWM
+        target_ts_utc = target_dt_local.timestamp() - tz_offset_sec
 
         # Лінійна інтерполяція (1-в-1 з еталоном AddMeteoData)
-        t_val = float(np.interp(target_ts, xp, temps))
-        c_val = float(np.interp(target_ts, xp, clouds))
-        p_val = float(np.interp(target_ts, xp, pressures))
-        h_val = float(np.interp(target_ts, xp, humidities))
-        w_val = float(np.interp(target_ts, xp, winds))
+        t_val = float(np.interp(target_ts_utc, xp, temps))
+        c_val = float(np.interp(target_ts_utc, xp, clouds))
+        p_val = float(np.interp(target_ts_utc, xp, pressures))
+        h_val = float(np.interp(target_ts_utc, xp, humidities))
+        w_val = float(np.interp(target_ts_utc, xp, winds))
 
         existing = db.query(WeatherForecast).filter(
             WeatherForecast.station_id == station_id,
-            WeatherForecast.timestamp == target_dt
+            WeatherForecast.timestamp == target_dt_local
         ).first()
 
         if existing:
@@ -174,7 +179,7 @@ def fetch_and_save_owm_weather(db: Session, station_id: int) -> int:
         else:
             weather_record = WeatherForecast(
                 station_id=station_id,
-                timestamp=target_dt,
+                timestamp=target_dt_local,
                 temperature=round(t_val, 2),
                 cloud_cover=round(c_val, 1),
                 pressure=round(p_val, 1),

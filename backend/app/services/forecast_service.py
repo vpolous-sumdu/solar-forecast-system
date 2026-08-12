@@ -68,8 +68,8 @@ def generate_power_forecast(db: Session, station_id: int) -> List[GenerationFore
     results = []
 
     for w in weather_records:
-        # Розраховуємо сонячну позицію
-        sun_pos = calculate_sun_position(station.latitude, station.longitude, w.timestamp)
+        # Розраховуємо сонячну позицію з урахуванням місцевого часу та часового поясу (watch = 3.0 влітку)
+        sun_pos = calculate_sun_position(station.latitude, station.longitude, w.timestamp, watch=3.0)
         
         # Для 1-годинного інтервалу h_svetl в еталоні — це час світла в цій конкретній годині [0.0 ... 1.0]
         if sun_pos["st_s"] == 2:
@@ -92,8 +92,8 @@ def generate_power_forecast(db: Session, station_id: int) -> List[GenerationFore
         ], dtype=np.float64)
 
 
-        if sun_pos["st_s"] != 2 or sun_pos["elevation"] <= 0:
-            # Фізичний гарант: якщо не день або сонце під горизонтом -> потужність 0.0 кВт
+        if sun_pos["st_s"] == 0 or sun_pos["elevation"] <= -0.4:
+            # Постпроцесинг 1-в-1 з for_forecast.py: якщо ніч або сонце низько під горизонтом (<= -0.4°) -> 0.0 кВт
             power_kw = 0.0
 
         else:
