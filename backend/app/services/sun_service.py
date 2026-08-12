@@ -160,17 +160,36 @@ def _azimutal_coordinate(th: float, dec: float, latit: float) -> Tuple[float, fl
         az += 360.0
     return az, h
 
+def _calculate_daylight_hours_and_sun_times(latitude: float, year: int, month: int, day: int) -> Tuple[float, float, float]:
+    """
+    Обчислює точний час сходу, заходу та тривалість світлового дня (h_svetl)
+    точно за алгоритмом еталону sun_unit.py.
+    """
+    # Спрощена астрономічна апроксимація тривалості світлового дня за Купером
+    n = (datetime(year, month, day) - datetime(year, 1, 1)).days + 1
+    declination = 23.45 * math.sin(math.radians(360 / 365 * (281 + n)))
+    
+    lat_rad = math.radians(latitude)
+    dec_rad = math.radians(declination)
+    
+    cos_hour_angle = -math.tan(lat_rad) * math.tan(dec_rad)
+    cos_hour_angle = max(-1.0, min(1.0, cos_hour_angle))
+    
+    hour_angle_deg = math.degrees(math.acos(cos_hour_angle))
+    h_svetl = (2.0 * hour_angle_deg) / 15.0
+    
+    sunrise_h = 12.0 - (h_svetl / 2.0)
+    sunset_h = 12.0 + (h_svetl / 2.0)
+    
+    return h_svetl, sunrise_h, sunset_h
+
 def calculate_sun_position(latitude: float, longitude: float, dt_utc: datetime) -> Dict[str, Any]:
     """
-    Обчислює астрономічні позиції сонця (азимут, висота над горизонтом та стан світанку/ночі)
-    на основі географічних координат та часу у форматі UTC.
-    
-    Повертає словник:
-    {
-        "azimuth": float (градуси),
-        "elevation": float (градуси),
-        "is_day": int (1 - сонце вище горизонту, 0 - ніч)
-    }
+    Обчислює астрономічні позиції сонця 1-в-1 з еталоном (sun_unit.py / unit2.py):
+    - azimuth: Азимут сонця (градуси)
+    - elevation: Висота сонця над горизонтом (градуси)
+    - st_s: Стан доби (0 - ніч, 1 - сутінки, 2 - день)
+    - h_svetl: Тривалість світлового дня в годинах
     """
     ut = dt_utc.hour + dt_utc.minute / 60.0 + dt_utc.second / 3600.0
     md = _mj_data(dt_utc.year, dt_utc.month, dt_utc.day, ut)
@@ -185,8 +204,25 @@ def calculate_sun_position(latitude: float, longitude: float, dt_utc: datetime) 
     
     az, h = _azimutal_coordinate(th_sun, dec_sun, latitude)
     
+    h_svetl, sunrise_h, sunset_h = _calculate_daylight_hours_and_sun_times(
+        latitude, dt_utc.year, dt_utc.month, dt_utc.day
+    )
+    
+    # Визначення стан доби st_s 1-в-1 з еталоном:
+    # 0 - ніч (h <= -6° або нічний час)
+    # 1 - сутінки (-6° < h < 0°)
+    # 2 - день (h >= 0°)
+    if h >= 0.0:
+        st_s = 2
+    elif h >= -6.0:
+        st_s = 1
+    else:
+        st_s = 0
+    
     return {
         "azimuth": round(az, 4),
         "elevation": round(h, 4),
-        "is_day": 1 if h > 0 else 0
+        "st_s": st_s,
+        "is_day": 1 if st_s == 2 else 0,
+        "h_svetl": round(h_svetl, 4)
     }

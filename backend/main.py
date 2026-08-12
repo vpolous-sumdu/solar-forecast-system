@@ -10,6 +10,7 @@ from alembic import command
 
 from app.api.stations import router as stations_router
 from app.api.weather import router as weather_router
+from app.api.forecast import router as forecast_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -47,7 +48,14 @@ app.add_middleware(
 
 app.include_router(stations_router, prefix="/api/v1")
 app.include_router(weather_router, prefix="/api/v1")
+app.include_router(forecast_router, prefix="/api/v1")
 
 @app.get("/")
 def root():
     return {"status": "online", "docs": "/docs"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+
+

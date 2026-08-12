@@ -27,8 +27,9 @@ def fetch_and_save_weather(db: Session, station_id: int) -> int:
         "hourly": "temperature_2m,relative_humidity_2m,surface_pressure,cloud_cover,wind_speed_10m",
         "wind_speed_unit": "ms",
         "timezone": "UTC",
-        "forecast_days": 2
+        "forecast_days": 1
     }
+
 
     try:
         response = requests.get(OPEN_METEO_URL, params=params, timeout=10)

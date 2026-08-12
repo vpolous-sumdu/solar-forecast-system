@@ -27,8 +27,10 @@ from app.db.session import Base
 from app.models.station import Station
 from app.models.weather import WeatherForecast
 from app.models.neural_model import NeuralModel
+from app.models.generation import GenerationForecast
 
 target_metadata = Base.metadata
+
 
 
 
