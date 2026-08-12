@@ -124,12 +124,14 @@ def fetch_and_save_owm_weather(db: Session, station_id: int) -> int:
 
     tz_offset_sec = int(data.get("city", {}).get("timezone", 10800))
 
-    # 1. Збираємо точки від OpenWeatherMap (timestamp, temp, cloud, pressure, humidity, wind)
+    # 1. Збираємо 3-годинні точки від OpenWeatherMap за МІСЦЕВИМ часом (1-в-1 з open_weather_map_unit.py)
     owm_points = []
     for item in weather_list:
         dt_utc = datetime.fromtimestamp(int(item["dt"]), tz=timezone.utc)
+        dt_local = dt_utc + timedelta(seconds=tz_offset_sec)
         owm_points.append({
-            "ts": dt_utc.timestamp(),
+            "local_dt": dt_local,
+            "hh": dt_local.hour + dt_local.minute / 60.0,
             "temp": float(item["main"]["temp"]),
             "cloud": float(item.get("clouds", {}).get("all", 0.0)),
             "pressure": float(item["main"]["pressure"]),
@@ -137,14 +139,7 @@ def fetch_and_save_owm_weather(db: Session, station_id: int) -> int:
             "wind": float(item.get("wind", {}).get("speed", 0.0))
         })
 
-    owm_points.sort(key=lambda x: x["ts"])
-    
-    xp = np.array([p["ts"] for p in owm_points])
-    temps = np.array([p["temp"] for p in owm_points])
-    clouds = np.array([p["cloud"] for p in owm_points])
-    pressures = np.array([p["pressure"] for p in owm_points])
-    humidities = np.array([p["humidity"] for p in owm_points])
-    winds = np.array([p["wind"] for p in owm_points])
+    owm_points.sort(key=lambda x: x["local_dt"])
 
     # 2. Формуємо 24 погодинні точки строго за МІСЦЕВИМ часом на ЗАВТРА (00:00 - 23:00)
     now_utc = datetime.now(timezone.utc)
@@ -154,15 +149,27 @@ def fetch_and_save_owm_weather(db: Session, station_id: int) -> int:
 
     for hour in range(24):
         target_dt_local = datetime(tomorrow_local.year, tomorrow_local.month, tomorrow_local.day, hour, 0, 0, tzinfo=timezone.utc)
-        # Відповідний UTC timestamp для інтерполяції з OWM
-        target_ts_utc = target_dt_local.timestamp() - tz_offset_sec
 
-        # Лінійна інтерполяція (1-в-1 з еталоном AddMeteoData)
-        t_val = float(np.interp(target_ts_utc, xp, temps))
-        c_val = float(np.interp(target_ts_utc, xp, clouds))
-        p_val = float(np.interp(target_ts_utc, xp, pressures))
-        h_val = float(np.interp(target_ts_utc, xp, humidities))
-        w_val = float(np.interp(target_ts_utc, xp, winds))
+        # Точна прив'язка метеоданих 1-в-1 з Delphi AddMeteoData (функція Incl: пошук 3h засічки Am[j].hh >= hour)
+        matched_point = None
+        for pt in owm_points:
+            if pt["local_dt"].date() == tomorrow_local and pt["hh"] >= hour:
+                matched_point = pt
+                break
+        
+        if not matched_point:
+            # Запасний варіант: найближча засічка за датою/часом
+            for pt in owm_points:
+                if pt["local_dt"].date() == tomorrow_local:
+                    matched_point = pt
+            if not matched_point:
+                matched_point = owm_points[-1]
+
+        t_val = matched_point["temp"]
+        c_val = matched_point["cloud"]
+        p_val = matched_point["pressure"]
+        h_val = matched_point["humidity"]
+        w_val = matched_point["wind"]
 
         existing = db.query(WeatherForecast).filter(
             WeatherForecast.station_id == station_id,
