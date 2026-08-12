@@ -11,13 +11,29 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
 }
 
-.section-title {
-  font-size: 1.2rem;
-  font-weight: 700;
+.selector-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.select-label {
+  font-size: 0.9rem;
+  font-weight: 600;
   color: var(--text-primary);
-  letter-spacing: -0.01em;
+}
+
+.station-select {
+  padding: 0.5rem 0.8rem;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--border-color);
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  background: #ffffff;
 }
 
 .btn {
@@ -28,25 +44,24 @@
   border: none;
   border-radius: var(--radius-btn);
   padding: 0.6rem 1.25rem;
-  letter-spacing: 0.01em;
   cursor: pointer;
   box-shadow: var(--shadow-btn);
-  transition: background 0.15s ease, transform 0.1s ease;
+  transition: background 0.15s ease;
 }
 
-.btn:hover {
+.btn:hover:not(:disabled) {
   background: var(--airtable-blue-hover);
-  transform: translateY(-1px);
 }
 
-.btn:active {
-  transform: translateY(0);
+.btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
-.col-id { width: 50px; }
-.col-name { width: 160px; }
-.col-power { width: 80px; }
-.col-coord { width: 90px; }
+
+
+.col-time { width: 140px; }
+.col-val { width: 80px; }
 
 
 .status-error {
@@ -59,19 +74,26 @@
   border: 1px solid #fecaca;
 }
 
+.empty-state {
+  text-align: center;
+  padding: 2.5rem;
+  color: var(--text-weak);
+  font-size: 0.95rem;
+}
+
 .table-wrapper {
   overflow-x: auto;
   border-radius: 8px;
   border: 1px solid var(--border-color);
 }
 
-.stations-table {
+.weather-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
 }
 
-.stations-table th {
+.weather-table th {
   background: var(--surface-light);
   color: var(--text-weak);
   font-weight: 600;
@@ -83,32 +105,29 @@
   border-bottom: 1px solid var(--border-color);
 }
 
-.stations-table td {
+.weather-table td {
   padding: 0.85rem 1.1rem;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-primary);
-  letter-spacing: 0.01em;
 }
 
-.stations-table tbody tr:last-child td {
+.weather-table tbody tr:last-child td {
   border-bottom: none;
 }
 
-.stations-table tbody tr:hover {
+.weather-table tbody tr:hover {
   background: rgba(248, 250, 252, 0.7);
 }
 
-.badge-capacity {
-  font-weight: 600;
-  color: var(--airtable-blue);
-  background: var(--secondary-active);
-  padding: 0.25rem 0.6rem;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  border: 1px solid rgba(27, 97, 201, 0.2);
-}
-
-.station-id {
+.time-cell {
   color: var(--text-weak);
   font-weight: 500;
+}
+
+.badge-cloud {
+  font-weight: 600;
+  color: #0369a1;
+  background: #f0f9ff;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
 }

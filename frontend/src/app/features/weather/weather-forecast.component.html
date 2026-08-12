@@ -1,0 +1,70 @@
+<div class="container">
+  <div class="card-container">
+    <div class="controls">
+      <div class="selector-group">
+        <label for="stationSelect" class="select-label">Оберіть сонячну станцію:</label>
+        <select id="stationSelect" class="station-select" (change)="onStationChange($event)">
+          @for (st of stations(); track st.id) {
+            <option [value]="st.id">#{{ st.id }} - {{ st.name }} ({{ st.installed_capacity_kw }} кВт)</option>
+          }
+        </select>
+      </div>
+
+      <button class="btn" [disabled]="fetching()" (click)="fetchFreshWeather()">
+        @if (fetching()) { Оновлення... } @else { Оновити з Open-Meteo }
+      </button>
+
+
+    </div>
+
+    @if (error()) {
+      <div class="status-error">Помилка: {{ error() }}</div>
+    }
+
+    <div class="table-wrapper">
+      <table class="weather-table">
+        <thead>
+          <tr>
+            <th>Дата та Час (UTC)</th>
+            <th>Температура (°C)</th>
+            <th>Хмарність (%)</th>
+            <th>Тиск (гПа)</th>
+            <th>Вологість (%)</th>
+            <th>Вітер (м/с)</th>
+          </tr>
+        </thead>
+        <tbody>
+          @if (loading()) {
+            @for (i of [1, 2, 3, 4, 5, 6]; track i) {
+              <tr>
+                <td><div class="skeleton-box col-time"></div></td>
+                <td><div class="skeleton-box col-val"></div></td>
+                <td><div class="skeleton-box col-val"></div></td>
+                <td><div class="skeleton-box col-val"></div></td>
+                <td><div class="skeleton-box col-val"></div></td>
+                <td><div class="skeleton-box col-val"></div></td>
+              </tr>
+            }
+          } @else if (forecasts().length === 0) {
+            <tr>
+              <td colspan="6" class="empty-state">
+                Немає збереженого прогнозу для цієї станції. Натисніть "Оновити з Open-Meteo".
+              </td>
+            </tr>
+          } @else {
+            @for (w of forecasts(); track w.id) {
+              <tr>
+                <td class="time-cell">{{ w.timestamp | date:'dd.MM.yyyy HH:mm':'UTC' }}</td>
+                <td><strong>{{ w.temperature }} °C</strong></td>
+                <td><span class="badge-cloud">{{ w.cloud_cover }} %</span></td>
+                <td>{{ w.pressure }} гПа</td>
+                <td>{{ w.humidity }} %</td>
+                <td>{{ w.wind_speed }} м/с</td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
