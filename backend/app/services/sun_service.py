@@ -183,16 +183,17 @@ def _calculate_daylight_hours_and_sun_times(latitude: float, year: int, month: i
     
     return h_svetl, sunrise_h, sunset_h
 
-def calculate_sun_position(latitude: float, longitude: float, dt_utc: datetime) -> Dict[str, Any]:
+def calculate_sun_position(latitude: float, longitude: float, dt_local: datetime, watch: float = 3.0) -> Dict[str, Any]:
     """
-    Обчислює астрономічні позиції сонця 1-в-1 з еталоном (sun_unit.py / unit2.py):
+    Обчислює астрономічні позиції сонця 1-в-1 з еталоном (sun_unit.py / unit4.py):
     - azimuth: Азимут сонця (градуси)
     - elevation: Висота сонця над горизонтом (градуси)
     - st_s: Стан доби (0 - ніч, 1 - сутінки, 2 - день)
     - h_svetl: Тривалість світлового дня в годинах
     """
-    ut = dt_utc.hour + dt_utc.minute / 60.0 + dt_utc.second / 3600.0
-    md = _mj_data(dt_utc.year, dt_utc.month, dt_utc.day, ut)
+    # Всесвітній час (UT) для середини 1-годинного інтервалу, як у unit4.py: (hh_mid - watch)
+    ut = (dt_local.hour + 0.5) - watch
+    md = _mj_data(dt_local.year, dt_local.month, dt_local.day, ut)
     sideral_time = _jd_sideral_grinvich(md) + longitude
     
     sun = _sun_coordinate(md)
@@ -205,7 +206,7 @@ def calculate_sun_position(latitude: float, longitude: float, dt_utc: datetime) 
     az, h = _azimutal_coordinate(th_sun, dec_sun, latitude)
     
     h_svetl, sunrise_h, sunset_h = _calculate_daylight_hours_and_sun_times(
-        latitude, dt_utc.year, dt_utc.month, dt_utc.day
+        latitude, dt_local.year, dt_local.month, dt_local.day
     )
     
     # Визначення стан доби st_s 1-в-1 з еталоном:
@@ -226,3 +227,4 @@ def calculate_sun_position(latitude: float, longitude: float, dt_utc: datetime) 
         "is_day": 1 if st_s == 2 else 0,
         "h_svetl": round(h_svetl, 4)
     }
+
