@@ -87,8 +87,8 @@ def generate_power_forecast(db: Session, station_id: int) -> List[GenerationFore
         ], dtype=np.float64)
 
 
-        if sun_pos["st_s"] == 0 or sun_pos["elevation"] <= -0.4:
-            # Постпроцесинг 1-в-1 з for_forecast.py: якщо ніч або сонце низько під горизонтом (<= -0.4°) -> 0.0 кВт
+        if sun_pos["elevation"] <= -0.4:
+            # Постпроцесинг 1-в-1 з for_forecast.py: якщо сонце низько під горизонтом (<= -0.4°) -> 0.0 кВт
             power_kw = 0.0
 
         else:
