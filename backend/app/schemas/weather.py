@@ -10,6 +10,7 @@ class WeatherForecastResponse(BaseModel):
     pressure: float
     humidity: float
     wind_speed: float
+    source: str
     created_at: datetime
 
     class Config:

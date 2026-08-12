@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.weather import WeatherForecast
 from app.schemas.weather import WeatherForecastResponse
-from app.services.weather_service import fetch_and_save_weather
+from app.services.weather_service import fetch_and_save_weather, fetch_and_save_owm_weather
 
 DbSessionDep = Annotated[Session, Depends(get_db)]
 
@@ -14,13 +14,22 @@ router = APIRouter(
     tags=["Прогноз Погоди (Weather)"]
 )
 
-@router.post("/fetch/{station_id}", status_code=status.HTTP_200_OK)
-def fetch_weather(station_id: int, db: DbSessionDep):
+@router.post("/fetch-open-meteo/{station_id}", status_code=status.HTTP_200_OK)
+def fetch_open_meteo_weather(station_id: int, db: DbSessionDep):
     """Завантажити свіжий прогноз погоди з Open-Meteo та зберегти у Neon DB"""
     saved_count = fetch_and_save_weather(db, station_id)
     return {
         "status": "success",
-        "message": f"Збережено/оновлено {saved_count} годинних записів погоди для станції #{station_id}"
+        "message": f"Збережено/оновлено {saved_count} годинних записів погоди з Open-Meteo для станції #{station_id}"
+    }
+
+@router.post("/fetch-openweathermap/{station_id}", status_code=status.HTTP_200_OK)
+def fetch_openweathermap_weather(station_id: int, db: DbSessionDep):
+    """Завантажити свіжий прогноз погоди з OpenWeatherMap та зберегти у Neon DB"""
+    saved_count = fetch_and_save_owm_weather(db, station_id)
+    return {
+        "status": "success",
+        "message": f"Збережено/оновлено {saved_count} годинних записів погоди з OpenWeatherMap для станції #{station_id}"
     }
 
 @router.get("/{station_id}", response_model=List[WeatherForecastResponse])

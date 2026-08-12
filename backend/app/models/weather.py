@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, UniqueConstraint, func
+from sqlalchemy import Column, Integer, Float, DateTime, String, ForeignKey, UniqueConstraint, func
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 
@@ -14,6 +14,7 @@ class WeatherForecast(Base):
     pressure = Column(Float, nullable=False)
     humidity = Column(Float, nullable=False)
     wind_speed = Column(Float, nullable=False)
+    source = Column(String(50), nullable=False, server_default="Open-Meteo")
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
