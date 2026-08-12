@@ -12,11 +12,12 @@ load_dotenv()
 
 config = context.config
 
-# Використовуємо пряме підключення для міграцій DDL
-direct_db_url = os.getenv("DIRECT_DATABASE_URL")
+# Використовуємо пряме підключення для міграцій DDL або звичайне
+direct_db_url = os.getenv("DIRECT_DATABASE_URL") or os.getenv("DATABASE_URL")
 
 if direct_db_url:
     config.set_main_option("sqlalchemy.url", direct_db_url)
+
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -25,8 +26,10 @@ if config.config_file_name is not None:
 from app.db.session import Base
 from app.models.station import Station
 from app.models.weather import WeatherForecast
+from app.models.neural_model import NeuralModel
 
 target_metadata = Base.metadata
+
 
 
 def run_migrations_offline() -> None:

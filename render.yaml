@@ -4,7 +4,8 @@ services:
     env: python
     region: frankfurt
     buildCommand: pip install -r requirements.txt
-    startCommand: cd backend && alembic upgrade head && cd .. && PYTHONPATH=backend uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
+    startCommand: cd backend && PYTHONPATH=. alembic upgrade head && PYTHONPATH=. uvicorn app.main:app --host 0.0.0.0 --port $PORT
+
     envVars:
       - key: ENVIRONMENT
         value: production
