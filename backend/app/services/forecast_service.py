@@ -71,14 +71,6 @@ def generate_power_forecast(db: Session, station_id: int) -> List[GenerationFore
         # Розраховуємо сонячну позицію з урахуванням місцевого часу та часового поясу (watch = 3.0 влітку)
         sun_pos = calculate_sun_position(station.latitude, station.longitude, w.timestamp, watch=3.0)
         
-        # Для 1-годинного інтервалу h_svetl в еталоні — це час світла в цій конкретній годині [0.0 ... 1.0]
-        if sun_pos["st_s"] == 2:
-            h_svetl_interval = 1.0
-        elif sun_pos["st_s"] == 1:
-            h_svetl_interval = max(0.0, min(1.0, (sun_pos["elevation"] + 6.0) / 6.0))
-        else:
-            h_svetl_interval = 0.0
-
         # Код погодного явища WW (1.0 при значній хмарності >= 15%, 0.0 при ясній погоді - 1-в-1 з open_weather_map_unit.py)
         ww_val = 1.0 if w.cloud_cover >= 15.0 else 0.0
 
@@ -87,7 +79,7 @@ def generate_power_forecast(db: Session, station_id: int) -> List[GenerationFore
         x_raw = np.array([
             [float(sun_pos["st_s"])],       # 1. st_s (0-ніч, 1-сутінки, 2-день)
             [float(w.temperature)],         # 2. t (температура)
-            [float(h_svetl_interval)],      # 3. h_svetl інтервалу (0.0 ... 1.0)
+            [float(sun_pos["h_svetl"])],    # 3. h_svetl інтервалу (0.0 ... 1.0)
             [float(w.cloud_cover)],         # 4. Nh (хмарність)
             [float(sun_pos["azimuth"])],    # 5. AzSun (азимут сонця)
             [float(sun_pos["elevation"])],  # 6. Hsun (висота сонця)

@@ -205,26 +205,34 @@ def calculate_sun_position(latitude: float, longitude: float, dt_local: datetime
     
     az, h = _azimutal_coordinate(th_sun, dec_sun, latitude)
     
-    h_svetl, sunrise_h, sunset_h = _calculate_daylight_hours_and_sun_times(
+    h_svetl_total, sunrise_h, sunset_h = _calculate_daylight_hours_and_sun_times(
         latitude, dt_local.year, dt_local.month, dt_local.day
     )
     
-    # Визначення стан доби st_s 1-в-1 з еталоном:
-    # 0 - ніч (h <= -6° або нічний час)
-    # 1 - сутінки (-6° < h < 0°)
-    # 2 - день (h >= 0°)
-    if h >= 0.0:
-        st_s = 2
-    elif h >= -6.0:
-        st_s = 1
-    else:
+    # Розрахунок st_s та h_svetl 1-в-1 з Delphi CalckStateSun (unit2.py):
+    hh_in = float(dt_local.hour)
+    hh_out = float(dt_local.hour + 1)
+    
+    # Сутінкові інтервали
+    hns = sunrise_h - 0.5 if sunrise_h > 0.5 else 0.0
+    hks = sunset_h + 0.5 if sunset_h < 23.5 else 24.0
+    
+    if hh_out <= sunrise_h or hh_in >= sunset_h:
         st_s = 0
+        h_svetl_interval = 0.0
+    elif hh_in >= sunrise_h and hh_out <= sunset_h:
+        st_s = 2
+        h_svetl_interval = 1.0
+    else:
+        st_s = 1
+        overlap = min(hh_out, sunset_h) - max(hh_in, sunrise_h)
+        h_svetl_interval = max(0.0, min(1.0, overlap))
     
     return {
         "azimuth": round(az, 4),
         "elevation": round(h, 4),
         "st_s": st_s,
         "is_day": 1 if st_s == 2 else 0,
-        "h_svetl": round(h_svetl, 4)
+        "h_svetl": round(h_svetl_interval, 4)
     }
 
