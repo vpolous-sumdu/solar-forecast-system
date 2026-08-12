@@ -79,6 +79,9 @@ def generate_power_forecast(db: Session, station_id: int) -> List[GenerationFore
         else:
             h_svetl_interval = 0.0
 
+        # Код погодного явища WW (1.0 при значній хмарності >= 15%, 0.0 при ясній погоді - 1-в-1 з open_weather_map_unit.py)
+        ww_val = 1.0 if w.cloud_cover >= 15.0 else 0.0
+
         # Сформований 7-вимірний вектор входів нейромережі 1-в-1 з еталоном:
         # [x1: st_s, x2: t, x3: h_svetl, x4: Nh, x5: AzSun, x6: Hsun, x7: WW]
         x_raw = np.array([
@@ -88,7 +91,7 @@ def generate_power_forecast(db: Session, station_id: int) -> List[GenerationFore
             [float(w.cloud_cover)],         # 4. Nh (хмарність)
             [float(sun_pos["azimuth"])],    # 5. AzSun (азимут сонця)
             [float(sun_pos["elevation"])],  # 6. Hsun (висота сонця)
-            [0.0]                           # 7. WW (коди погодних явищ)
+            [float(ww_val)]                 # 7. WW (коди погодних явищ)
         ], dtype=np.float64)
 
 
