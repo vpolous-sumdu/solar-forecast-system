@@ -1,12 +1,21 @@
 :root {
-  --bg-color: #ffffff;
-  --card-bg: #ffffff;
-  --border-color: #e2e8f0;
-  --text-main: #0f172a;
-  --text-sub: #64748b;
-  --accent-color: #2563eb;
-  --accent-hover: #1d4ed8;
-  --badge-bg: #f1f5f9;
+  /* Airtable Design System Color Tokens */
+  --canvas-bg: #ffffff;
+  --text-primary: #181d26;
+  --text-weak: rgba(4, 14, 32, 0.65);
+  --airtable-blue: #1b61c9;
+  --airtable-blue-hover: #1551aa;
+  --border-color: #e0e2e6;
+  --surface-light: #f8fafc;
+  --secondary-active: #eff6ff;
+  
+  /* Airtable Shadows & Radius Tokens */
+  --radius-btn: 12px;
+  --radius-card: 16px;
+  --radius-small: 6px;
+  
+  --shadow-airtable: rgba(0, 0, 0, 0.04) 0px 0px 1px, rgba(45, 127, 249, 0.12) 0px 2px 8px;
+  --shadow-btn: rgba(45, 127, 249, 0.22) 0px 2px 6px;
 }
 
 * {
@@ -16,122 +25,15 @@
 }
 
 body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: var(--bg-color);
-  color: var(--text-main);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background: var(--canvas-bg);
+  color: var(--text-primary);
   min-height: 100vh;
-  padding: 2rem 1rem;
+  line-height: 1.5;
 }
 
 .container {
-  max-width: 1000px;
+  max-width: 1080px;
   margin: 0 auto;
-}
-
-.header {
-  margin-bottom: 2rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.header-title {
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: var(--text-main);
-}
-
-.controls {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.25rem;
-}
-
-.section-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--text-main);
-}
-
-.btn {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #ffffff;
-  background: var(--accent-color);
-  border: none;
-  border-radius: 6px;
-  padding: 0.5rem 1rem;
-  cursor: pointer;
-}
-
-.btn:hover {
-  background: var(--accent-hover);
-}
-
-/* Skeleton Loading Animation & CSS Classes */
-.skeleton-box {
-  height: 20px;
-  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 37%, #f1f5f9 63%);
-  background-size: 400% 100%;
-  animation: skeleton-shimmer 1.4s ease infinite;
-  border-radius: 4px;
-}
-
-.col-id { width: 50px; }
-.col-name { width: 160px; }
-.col-power { width: 80px; }
-.col-coord { width: 90px; }
-
-@keyframes skeleton-shimmer {
-  0% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0 50%;
-  }
-}
-
-.status-error {
-  padding: 1rem;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  margin-top: 1rem;
-  background: #fef2f2;
-  color: #dc2626;
-}
-
-.table-wrapper {
-  overflow-x: auto;
-}
-
-.stations-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-}
-
-.stations-table th {
-  color: var(--text-sub);
-  font-weight: 600;
-  padding: 0.75rem 1rem;
-  text-align: left;
-  font-size: 0.8rem;
-  border-bottom: 2px solid var(--border-color);
-}
-
-.stations-table td {
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.badge-capacity {
-  font-weight: 600;
-  color: #0369a1;
-  background: #f0f9ff;
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
-}
-
-.station-id {
-  color: var(--text-sub);
+  padding: 0 1.5rem;
 }

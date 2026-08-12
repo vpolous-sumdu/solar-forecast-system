@@ -23,9 +23,11 @@ if config.config_file_name is not None:
 
 # Підключаємо метадані наших моделей (Base.metadata)
 from app.db.session import Base
-from app.models.station import Station  # Імпортуємо модель станцій
+from app.models.station import Station
+from app.models.weather import WeatherForecast
 
 target_metadata = Base.metadata
+
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")

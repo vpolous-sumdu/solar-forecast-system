@@ -6,8 +6,10 @@ import { Station } from '../../core/models/station.model';
   selector: 'app-station-list',
   standalone: true,
   imports: [],
-  templateUrl: './station-list.component.html'
+  templateUrl: './station-list.component.html',
+  styleUrl: './station-list.component.css'
 })
+
 export class StationListComponent implements OnInit {
   private stationService = inject(StationService);
 
