@@ -37,13 +37,11 @@ def _jd_sideral_grinvich(md: float) -> float:
     
     tint = int(math.trunc(md))
     t0 = (tint - 51544.5) / 36525.0
-    s0 = a1 + a2 * t0 + a3 * (t0**2) - a4 * t0 * (t0**2)
+    s0 = a1 + a2 * t0 + a3 * (t0**2) - a4 * (t0**3)
     
     nsec = (md - tint) * 86400.0
     ut1 = nsec * 366.2422 / 365.2422
-    s0 = s0 + ut1
-    s0 = s0 / 3600.0
-    s0 = s0 * 15.0
+    s0 = (s0 + ut1) / 3600.0 * 15.0
     
     while s0 >= 360.0:
         s0 -= 360.0
@@ -160,38 +158,222 @@ def _azimutal_coordinate(th: float, dec: float, latit: float) -> Tuple[float, fl
         az += 360.0
     return az, h
 
-def _calculate_daylight_hours_and_sun_times(latitude: float, year: int, month: int, day: int) -> Tuple[float, float, float]:
-    """
-    Обчислює точний час сходу, заходу та тривалість світлового дня (h_svetl)
-    точно за алгоритмом еталону sun_unit.py.
-    """
-    # Спрощена астрономічна апроксимація тривалості світлового дня за Купером
-    n = (datetime(year, month, day) - datetime(year, 1, 1)).days + 1
-    declination = 23.45 * math.sin(math.radians(360 / 365 * (281 + n)))
+# --- Вбудований точний астрономічний модуль з sun_unit.py / unit2.py ---
+
+def _time24(tt: float) -> float:
+    res = tt
+    if res >= 24.0:
+        res -= 24.0
+    if res < 0.0:
+        res += 24.0
+    return res
+
+def _correction_day(year: int) -> Tuple[int, int]:
+    md0 = _mj_data(2009, 1, 5, 0.0)
+    md1 = _mj_data(year, 3, 31, 0.0)
+    dm = abs(md1 - md0 + 1)
+    day1 = int(math.trunc(int((dm / 7.0 - int(dm / 7.0)) * 7.0 + 0.5)))
+    if md1 - md0 < 0:
+        day1 = 7 - day1
+    day1_fixed = (day1 + 1) % 7
+    day_l = 31 - day1_fixed
     
-    lat_rad = math.radians(latitude)
-    dec_rad = math.radians(declination)
+    md1 = _mj_data(year, 10, 31, 0.0)
+    dm = abs(md1 - md0 + 1)
+    day1 = int(math.trunc(int((dm / 7.0 - int(dm / 7.0)) * 7.0 + 0.5)))
+    if md1 - md0 < 0:
+        day1 = 7 - day1
+    day1_fixed = (day1 + 1) % 7
+    day_z = 31 - day1_fixed
+    return day_l, day_z
+
+def _universal_time_md(time_m: float, watch: float, decret_time: float, year: int, mon: int, day: int) -> Tuple[float, float]:
+    md0 = _mj_data(year, mon, day, 0.0)
+    d_time = float(-watch - decret_time)
+    md1 = md0 + (time_m + d_time) / 24.0
+    day_l, day_z = _correction_day(year)
+    t1 = _time24(2.0 + d_time)
+    md_l = _mj_data(year, 3, day_l, 0.0) + t1 / 24.0
+    t1 = _time24(3.0 + d_time)
+    md_z = _mj_data(year, 10, day_z, 0.0) + t1 / 24.0
+    if (md1 > md_l) and (md1 < md_z):
+        d_time -= 1.0
+    result = md0 + (time_m + d_time) / 24.0
+    return result, d_time
+
+def _sun_poz_unit(md: float) -> list[float]:
+    t0 = (int(math.trunc(md)) - 51544.5) / 36525.0
+    ut = (md - int(math.trunc(md))) * 24.0
+    m = _mod2pi(357.528 + 35999.05 * t0 + 0.04107 * ut)
+    l = 280.46 + 36000.772 * t0 + 0.04107 * ut
+    m_rad = math.radians(m)
+    l = _mod2pi(l + (1.915 - 0.0048 * t0) * math.sin(m_rad) + 0.02 * math.sin(2.0 * m_rad))
+    l_rad = math.radians(l)
+    hvect = [math.cos(l_rad), math.sin(l_rad), 0.0]
+    eps = math.radians(23.439281)
+    return [hvect[0], hvect[1] * math.cos(eps) - hvect[2] * math.sin(eps), hvect[1] * math.sin(eps) + hvect[2] * math.cos(eps)]
+
+def _sun_rise_unit(latitude: float, ra_sun: list[float], dec_sun: list[float], sideral_time: float, d_time: float):
+    st_ = 0
+    mesg = [' ', ' ']
+    time_rise = 0.0
+    time_set = 0.0
+    begin_sum = 0.0
+    end_sum = 0.0
+    sum_h = -6.0
+    po = 51.0 / 60.0
+    l_rad = math.radians(latitude)
     
-    cos_hour_angle = -math.tan(lat_rad) * math.tan(dec_rad)
-    cos_hour_angle = max(-1.0, min(1.0, cos_hour_angle))
+    if dec_sun[0] >= 90.0 - latitude - po:
+        return mesg, -1.0, -1.0, -1.0, -1.0, 1
+    if dec_sun[0] <= -90.0 + latitude - po:
+        return mesg, -1.0, -1.0, -1.0, -1.0, 2
+    if dec_sun[0] >= 90.0 - latitude - po + sum_h:
+        begin_sum = -1.0
+        end_sum = -1.0
+        
+    ra_sun_1 = ra_sun[1]
+    if ra_sun_1 < ra_sun[0]:
+        ra_sun_1 += 360.0
+    dra = (ra_sun_1 - ra_sun[0]) / 24.0
+    ddec = (dec_sun[1] - dec_sun[0]) / 24.0
+    th = sideral_time - ra_sun[0]
+    trez = math.sin(l_rad) * math.sin(math.radians(0.0)) + math.cos(l_rad) * math.cos(math.radians(0.0)) * math.cos(math.radians(th))
+    hh = 90.0 - math.degrees(math.acos(trez))
+    stepi = 4
     
-    hour_angle_deg = math.degrees(math.acos(cos_hour_angle))
-    h_svetl = (2.0 * hour_angle_deg) / 15.0
+    for i in range(23 * stepi + stepi + 1):
+        h_last = hh
+        ra = ra_sun[0] + (i / float(stepi)) * dra
+        dec = dec_sun[0] + (i / float(stepi)) * ddec
+        st = sideral_time + (i / float(stepi)) * 15.0 * 1.002738
+        th = st - ra
+        trez = math.sin(l_rad) * math.sin(math.radians(dec)) + math.cos(l_rad) * math.cos(math.radians(dec)) * math.cos(math.radians(th))
+        hh = 90.0 - math.degrees(math.acos(trez))
+        h_refr = hh + po
+        
+        if (time_rise != -1.0) and (h_last < 0.0) and (hh > 0.0):
+            time_rise = (i / float(stepi)) - h_refr / (hh - h_last) / float(stepi)
+        if (time_rise != -1.0) and (h_last > 0.0) and (hh < 0.0):
+            time_set = (i / float(stepi)) - h_refr / (hh - h_last) / float(stepi)
+        if (begin_sum != -1.0) and (h_last <= sum_h) and (hh >= sum_h):
+            begin_sum = (i / float(stepi)) + (sum_h - hh) / (hh - h_last) / float(stepi)
+        if (end_sum != -1.0) and (h_last >= sum_h) and (hh <= sum_h):
+            end_sum = (i / float(stepi)) + (sum_h - hh) / (hh - h_last) / float(stepi)
+            
+    if time_rise != -1.0: time_rise = _time24(time_rise - d_time)
+    if time_set != -1.0: time_set = _time24(time_set - d_time)
+    if begin_sum != -1.0: begin_sum = _time24(begin_sum - d_time)
+    if end_sum != -1.0: end_sum = _time24(end_sum - d_time)
+    return mesg, time_rise, time_set, begin_sum, end_sum, st_
+
+def _sun_unit_main(year: int, mon: int, day: int, time_m: float, watch: float, decret_time: float, longitude: float, latitude: float):
+    jul_dat, d_time = _universal_time_md(time_m, watch, decret_time, year, mon, day)
+    md = int(math.trunc(jul_dat))
+    sideral_time = _jd_sideral_grinvich(md) + longitude
+    ra_sun = [0.0, 0.0]
+    dec_sun = [0.0, 0.0]
+    sun1 = _sun_poz_unit(md)
+    ra_sun[0], dec_sun[0] = _angles_from_vector(sun1)
+    sun2 = _sun_poz_unit(md + 1.0)
+    ra_sun[1], dec_sun[1] = _angles_from_vector(sun2)
+    mesg, time_rise, time_set, begin_sum, end_sum, st_ = _sun_rise_unit(latitude, ra_sun, dec_sun, sideral_time, d_time)
+    return {'TimeRise': time_rise, 'TimeSet': time_set, 'BeginSum': begin_sum, 'EndSum': end_sum, 'st_': st_, 'dTime': d_time}
+
+def _state_illuminance_d4(hh: float, hv: float, hz: float, hns: float, hks: float) -> int:
+    if hh < hns: return 0
+    if hh > hns and hh < hv: return 1
+    if hh > hv and hh < hz: return 2
+    if hh > hz and hh < hks: return 3
+    if hh > hks: return 4
+    return 100
+
+def _illuminance_diff(h1: float, h2: float, hv: float, hz: float, hns: float, hks: float) -> Tuple[int, float]:
+    dh3 = 0.0
+    if h1 > h2: h1, h2 = h2, h1
+    st_h1 = _state_illuminance_d4(h1, hv, hz, hns, hks)
+    if st_h1 == 100: return 100, dh3
+    st_h2 = _state_illuminance_d4(h2, hv, hz, hns, hks)
+    if st_h2 == 100: return 100, dh3
+    dh0 = h2 - h1
     
-    sunrise_h = 12.0 - (h_svetl / 2.0)
-    sunset_h = 12.0 + (h_svetl / 2.0)
+    def case_st1(st_val, h_val):
+        if st_val == 0: return hns - h_val
+        elif st_val == 1: return hv - h_val
+        elif st_val == 2: return hz - h_val
+        elif st_val == 3: return hks - h_val
+        elif st_val == 4: return 24.0 - h_val
+        return 0.0
+        
+    def case_st2(st_val, h_val):
+        if st_val == 0: return h_val - 0.0
+        elif st_val == 1: return h_val - hns
+        elif st_val == 2: return h_val - hv
+        elif st_val == 3: return h_val - hv
+        elif st_val == 4: return h_val - hks
+        return 0.0
+
+    if abs(st_h2 - st_h1) == 1:
+        dh1 = case_st1(st_h1, h1); dh2 = case_st2(st_h2, h2)
+        pc1 = dh1 / dh0 if dh0 != 0 else 0; pc2 = dh2 / dh0 if dh0 != 0 else 0
+        return (st_h1 if pc1 > pc2 else st_h2), dh3
+
+    if abs(st_h2 - st_h1) == 2:
+        dh1 = case_st1(st_h1, h1); dh2 = case_st2(st_h2, h2); dh3 = 0.0
+        if st_h1 == 0 and st_h2 == 2: dh3 = hv - hns
+        elif st_h1 == 1 and st_h2 == 3: dh3 = hz - hv
+        elif st_h1 == 2 and st_h2 == 4: dh3 = hks - hz
+        pc1 = dh1 / dh0 if dh0 != 0 else 0; pc2 = dh2 / dh0 if dh0 != 0 else 0; pc3 = dh3 / dh0 if dh0 != 0 else 0
+        result = st_h1 if pc1 > pc2 else st_h2
+        if pc3 > max(pc1, pc2): result = (st_h2 + st_h1) // 2
+        return result, dh3
+
+    if st_h2 == st_h1:
+        result = st_h1
+        if result == 2: dh3 = dh0
+        return result, dh3
+    return 100, dh3
+
+def _calck_state_sun_native(year: int, mon: int, day: int, hh_in: float, hh_out: float, longitude: float, latitude: float, watch: float = 3.0, decret_time: float = 0.0) -> Tuple[int, float]:
+    res = _sun_unit_main(year, mon, day, 12.0, watch, decret_time, longitude, latitude)
+    hv = res['TimeRise']
+    hz = res['TimeSet']
+    hns = res['BeginSum']
+    hks = res['EndSum']
+    st_day = res['st_']
     
-    return h_svetl, sunrise_h, sunset_h
+    if st_day == 1:
+        hv = -0.1; hz = 24.01; hns = hv; hks = hz
+    elif st_day == 2:
+        hv = 24.01; hz = 24.01; hns = hv; hks = hz
+    elif st_day == 3:
+        hns = -0.1; hks = 24.01
+        
+    st, dh_svet = _illuminance_diff(hh_in, hh_out, hv, hz, hns, hks)
+    if dh_svet < 0:
+        dh_svet = 24.0 + dh_svet
+    if dh_svet > (hh_out - hh_in):
+        dh_svet = hh_out - hh_in
+        
+    if st in [0, 4]:
+        st = 0
+    elif st in [1, 3]:
+        st = 1
+    elif st == 2:
+        st = 2
+    else:
+        st = 100
+        
+    return st, dh_svet
 
 def calculate_sun_position(latitude: float, longitude: float, dt_local: datetime, watch: float = 3.0) -> Dict[str, Any]:
     """
-    Обчислює астрономічні позиції сонця 1-в-1 з еталоном (sun_unit.py / unit4.py):
+    Обчислює астрономічні позиції сонця 1-в-1 з еталоном (sun_unit.py / unit4.py / unit2.py):
     - azimuth: Азимут сонця (градуси)
     - elevation: Висота сонця над горизонтом (градуси)
     - st_s: Стан доби (0 - ніч, 1 - сутінки, 2 - день)
-    - h_svetl: Тривалість світлового дня в годинах
+    - h_svetl: Тривалість світлового дня в годинах для 1h інтервалу
     """
-    # Всесвітній час (UT) для середини 1-годинного інтервалу, як у unit4.py: (hh_mid - watch)
     ut = (dt_local.hour + 0.5) - watch
     md = _mj_data(dt_local.year, dt_local.month, dt_local.day, ut)
     sideral_time = _jd_sideral_grinvich(md) + longitude
@@ -205,28 +387,11 @@ def calculate_sun_position(latitude: float, longitude: float, dt_local: datetime
     
     az, h = _azimutal_coordinate(th_sun, dec_sun, latitude)
     
-    h_svetl_total, sunrise_h, sunset_h = _calculate_daylight_hours_and_sun_times(
-        latitude, dt_local.year, dt_local.month, dt_local.day
-    )
-    
-    # Розрахунок st_s та h_svetl 1-в-1 з Delphi CalckStateSun (unit2.py):
     hh_in = float(dt_local.hour)
     hh_out = float(dt_local.hour + 1)
-    
-    # Сутінкові інтервали
-    hns = sunrise_h - 0.5 if sunrise_h > 0.5 else 0.0
-    hks = sunset_h + 0.5 if sunset_h < 23.5 else 24.0
-    
-    if hh_out <= sunrise_h or hh_in >= sunset_h:
-        st_s = 0
-        h_svetl_interval = 0.0
-    elif hh_in >= sunrise_h and hh_out <= sunset_h:
-        st_s = 2
-        h_svetl_interval = 1.0
-    else:
-        st_s = 1
-        overlap = min(hh_out, sunset_h) - max(hh_in, sunrise_h)
-        h_svetl_interval = max(0.0, min(1.0, overlap))
+    st_s, h_svetl_interval = _calck_state_sun_native(
+        dt_local.year, dt_local.month, dt_local.day, hh_in, hh_out, longitude, latitude, watch=watch
+    )
     
     return {
         "azimuth": round(az, 4),
@@ -235,4 +400,3 @@ def calculate_sun_position(latitude: float, longitude: float, dt_local: datetime
         "is_day": 1 if st_s == 2 else 0,
         "h_svetl": round(h_svetl_interval, 4)
     }
-
