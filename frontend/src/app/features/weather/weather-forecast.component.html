@@ -31,6 +31,13 @@
       </div>
 
 
+      <div class="selector-group">
+        <label for="compareSourcesToggle" class="select-label checkbox-label">
+          <input type="checkbox" id="compareSourcesToggle" (change)="onCompareToggleChange($event)" [checked]="compareMode()">
+          Порівняти джерела погоди (OWM vs Open-Meteo)
+        </label>
+      </div>
+
       <div class="button-group">
         <button class="btn btn-secondary" [disabled]="fetching() || fetchingOWM()" (click)="fetchSelectedWeather()">
           @if (fetching() || fetchingOWM()) { Оновлення... } @else { Завантажити погоду }
@@ -45,6 +52,12 @@
     @if (error()) {
       <div class="status-error">Помилка: {{ error() }}</div>
     }
+
+    @if (chartLabels().length > 0 && chartSeries().length > 0) {
+      <app-power-chart [labels]="chartLabels()" [series]="chartSeries()"></app-power-chart>
+    }
+
+
 
     <div class="table-wrapper">
       <table class="weather-table">

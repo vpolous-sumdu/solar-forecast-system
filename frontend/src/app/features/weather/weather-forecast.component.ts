@@ -1,15 +1,16 @@
-import { Component, OnInit, signal, inject } from '@angular/core';
+import { Component, OnInit, signal, computed, inject } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { StationService } from '../../core/services/station.service';
 import { WeatherService } from '../../core/services/weather.service';
 import { GenerationService } from '../../core/services/generation.service';
 import { Station } from '../../core/models/station.model';
 import { WeatherForecast } from '../../core/models/weather.model';
+import { PowerChartComponent, ChartSeries } from '../../shared/components/power-chart/power-chart.component';
 
 @Component({
   selector: 'app-weather-forecast',
   standalone: true,
-  imports: [DatePipe],
+  imports: [DatePipe, PowerChartComponent],
   templateUrl: './weather-forecast.component.html',
   styleUrl: './weather-forecast.component.css'
 })
@@ -22,9 +23,11 @@ export class WeatherForecastComponent implements OnInit {
   selectedStationId = signal<number | null>(null);
 
   selectedWeatherSource = signal<string>('OpenWeatherMap');
+  compareMode = signal<boolean>(false);
 
   forecasts = signal<WeatherForecast[]>([]);
   generationMap = signal<Record<string, { predicted_power_watts: number; predicted_power_kw: number }>>({});
+  secondaryGenMap = signal<Record<string, { predicted_power_watts: number; predicted_power_kw: number }>>({});
 
   loading = signal<boolean>(false);
   fetching = signal<boolean>(false);
@@ -32,6 +35,54 @@ export class WeatherForecastComponent implements OnInit {
   generating = signal<boolean>(false);
   loadingGen = signal<boolean>(false);
   error = signal<string | null>(null);
+
+  chartLabels = computed<string[]>(() => {
+    const list = this.forecasts();
+    if (list.length === 0) return [];
+    return list.map(w => {
+      const d = new Date(w.timestamp);
+      const hh = String(d.getUTCHours()).padStart(2, '0');
+      return `${hh}:00`;
+    });
+  });
+
+  chartSeries = computed<ChartSeries[]>(() => {
+    const list = this.forecasts();
+    const primaryMap = this.generationMap();
+    if (list.length === 0 || Object.keys(primaryMap).length === 0) return [];
+
+    const primarySource = this.selectedWeatherSource();
+    const primaryValues = list.map(w => {
+      const gen = this.getGenerationForItem(w);
+      return gen ? gen.predicted_power_kw : 0;
+    });
+
+    const seriesList: ChartSeries[] = [{
+      name: `${primarySource} (Обране джерело)`,
+      data: primaryValues,
+      color: '#2563eb',
+      fillColor: 'rgba(37, 99, 235, 0.12)'
+    }];
+
+    if (this.compareMode()) {
+      const secondarySource = primarySource === 'OpenWeatherMap' ? 'Open-Meteo' : 'OpenWeatherMap';
+      const secondaryMap = this.secondaryGenMap();
+      const secondaryValues = list.map(w => {
+        const key = new Date(w.timestamp).toISOString();
+        const gen = secondaryMap[key];
+        return gen ? gen.predicted_power_kw : 0;
+      });
+
+      seriesList.push({
+        name: `${secondarySource} (Порівняння)`,
+        data: secondaryValues,
+        color: '#16a34a',
+        fillColor: 'rgba(22, 163, 74, 0.10)'
+      });
+    }
+
+    return seriesList;
+  });
 
   ngOnInit(): void {
     this.loadStations();
@@ -61,6 +112,7 @@ export class WeatherForecastComponent implements OnInit {
     const stationId = Number(select.value);
     this.selectedStationId.set(stationId);
     this.generationMap.set({});
+    this.secondaryGenMap.set({});
     this.loadWeather(stationId);
   }
 
@@ -68,9 +120,19 @@ export class WeatherForecastComponent implements OnInit {
     const select = event.target as HTMLSelectElement;
     this.selectedWeatherSource.set(select.value);
     this.generationMap.set({});
+    this.secondaryGenMap.set({});
     const stationId = this.selectedStationId();
     if (stationId) {
       this.loadWeather(stationId);
+    }
+  }
+
+  onCompareToggleChange(event: Event): void {
+    const checkbox = event.target as HTMLInputElement;
+    this.compareMode.set(checkbox.checked);
+    const stationId = this.selectedStationId();
+    if (checkbox.checked && stationId) {
+      this.loadSecondaryGeneration(stationId);
     }
   }
 
@@ -80,13 +142,14 @@ export class WeatherForecastComponent implements OnInit {
 
     this.weatherService.getWeatherForecast(stationId).subscribe({
       next: (weatherData) => {
-        // Фільтруємо збережену погоду СТРОГО під обране джерело (OpenWeatherMap / Open-Meteo)
         const source = this.selectedWeatherSource();
         const filtered = weatherData.filter(w => w.source === source);
         this.forecasts.set(filtered);
         this.loading.set(false);
         this.loadSavedGeneration(stationId);
-
+        if (this.compareMode()) {
+          this.loadSecondaryGeneration(stationId);
+        }
       },
       error: () => {
         this.error.set('Не вдалося отримати збережений прогноз погоди');
@@ -114,6 +177,26 @@ export class WeatherForecastComponent implements OnInit {
       error: () => {
         this.loadingGen.set(false);
       }
+    });
+  }
+
+  loadSecondaryGeneration(stationId: number): void {
+    const primarySource = this.selectedWeatherSource();
+    const secondarySource = primarySource === 'OpenWeatherMap' ? 'Open-Meteo' : 'OpenWeatherMap';
+
+    this.generationService.getSavedForecast(stationId, secondarySource).subscribe({
+      next: (res) => {
+        const map: Record<string, { predicted_power_watts: number; predicted_power_kw: number }> = {};
+        for (const item of res.data) {
+          const isoKey = new Date(item.timestamp).toISOString();
+          map[isoKey] = {
+            predicted_power_watts: item.predicted_power_watts,
+            predicted_power_kw: item.predicted_power_kw
+          };
+        }
+        this.secondaryGenMap.set(map);
+      },
+      error: () => {}
     });
   }
 
@@ -186,6 +269,9 @@ export class WeatherForecastComponent implements OnInit {
         }
         this.generationMap.set(map);
         this.generating.set(false);
+        if (this.compareMode()) {
+          this.loadSecondaryGeneration(stationId);
+        }
       },
       error: (err) => {
         this.error.set(err.error?.detail || 'Помилка розрахунку прогнозу генерації');
