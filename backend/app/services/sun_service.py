@@ -394,9 +394,10 @@ def calculate_sun_position(latitude: float, longitude: float, dt_local: datetime
     )
     
     return {
-        "azimuth": round(az, 4),
-        "elevation": round(h, 4),
+        "azimuth": float(az),
+        "elevation": float(h),
         "st_s": st_s,
         "is_day": 1 if st_s == 2 else 0,
-        "h_svetl": round(h_svetl_interval, 4)
+        "h_svetl": float(h_svetl_interval)
     }
+

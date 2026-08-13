@@ -4,9 +4,7 @@ from app.db.session import Base
 
 class Station(Base):
     """
-    Модель сонячної електростанції (СЕС).
-    Дотримуємося engineering-standards: назва таблиці у множині 'stations',
-    час строго у UTC (TIMESTAMPTZ).
+    Модель сонячної електростанції (СЕС)
     """
     __tablename__ = "stations"
 

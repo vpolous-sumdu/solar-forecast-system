@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, UniqueConstraint, func
+from sqlalchemy import Column, Integer, Float, DateTime, String, ForeignKey, UniqueConstraint, func
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 
@@ -10,7 +10,9 @@ class GenerationForecast(Base):
     model_id = Column(Integer, ForeignKey("neural_models.id", ondelete="SET NULL"), nullable=True, index=True)
     
     timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
-    predicted_power_kw = Column(Float, nullable=False)
+    predicted_power_watts = Column(Float, nullable=False, default=0.0)
+    predicted_power_kw = Column(Float, nullable=False, default=0.0)
+    weather_source = Column(String(50), nullable=False, default="OpenWeatherMap")
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
@@ -18,5 +20,5 @@ class GenerationForecast(Base):
     model = relationship("NeuralModel", backref="generation_forecasts")
 
     __table_args__ = (
-        UniqueConstraint("station_id", "timestamp", name="uq_station_generation_timestamp"),
+        UniqueConstraint("station_id", "weather_source", "model_id", "timestamp", name="uq_station_weather_model_timestamp"),
     )

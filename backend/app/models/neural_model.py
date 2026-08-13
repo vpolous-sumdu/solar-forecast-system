@@ -8,6 +8,7 @@ class NeuralModel(Base):
     id = Column(Integer, primary_key=True, index=True)
     station_id = Column(Integer, ForeignKey("stations.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String(100), nullable=False, default="MATLAB_Baseline_v1.0")
+    code = Column(String(50), nullable=False, default="baseline")
     is_active = Column(Boolean, nullable=False, default=True)
     weights = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

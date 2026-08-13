@@ -23,26 +23,11 @@ def get_stations(db: DbSessionDep):
 
 @router.post("/sync", status_code=status.HTTP_200_OK)
 def sync_default_stations(db: DbSessionDep):
-    """Синхронізувати/Оновити список дефолтних еталонних станцій з еталону"""
-    from seed_stations import DEFAULT_STATIONS
-    count = 0
-    for item in DEFAULT_STATIONS:
-        station = db.query(Station).filter(Station.id == item["id"]).first()
-        if not station:
-            station = Station(
-                id=item["id"],
-                name=item["name"],
-                latitude=item["latitude"],
-                longitude=item["longitude"],
-                installed_capacity_kw=item["installed_capacity_kw"]
-            )
-            db.add(station)
-        else:
-            station.name = item["name"]
-            station.latitude = item["latitude"]
-            station.longitude = item["longitude"]
-            station.installed_capacity_kw = item["installed_capacity_kw"]
-        count += 1
-    db.commit()
-    return {"status": "success", "message": f"Синхронізовано {count} станцій"}
+    """Синхронізувати/Оновити список дефолтних еталонних станцій з PVOutput"""
+    from seed_stations import seed_and_sync_stations
+    stats = seed_and_sync_stations()
+    total = stats.get("total", 0)
+    return {"status": "success", "message": f"Синхронізацію {total} станцій з PVOutput успішно виконано"}
+
+
 

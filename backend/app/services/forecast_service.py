@@ -1,6 +1,5 @@
 import numpy as np
-from typing import List, Dict, Any
-from datetime import datetime
+from typing import List, Optional
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
@@ -8,22 +7,18 @@ from app.models.station import Station
 from app.models.weather import WeatherForecast
 from app.models.neural_model import NeuralModel
 from app.models.generation import GenerationForecast
-from app.services.sun_service import calculate_sun_position
 
-def _tansig(x: np.ndarray) -> np.ndarray:
-    return 2.0 / (1.0 + np.exp(-2.0 * np.clip(x, -50.0, 50.0))) - 1.0
+from app.services.models.model_registry import execute_model_prediction
 
 
-def _mapminmax_apply(x: np.ndarray, xoffset: np.ndarray, gain: np.ndarray, ymin: float = -1.0) -> np.ndarray:
-    return (x - xoffset) * gain + ymin
-
-def _mapminmax_reverse(y: np.ndarray, ymin: float, gain: float, xoffset: float) -> np.ndarray:
-    return (y - ymin) / gain + xoffset
-
-def generate_power_forecast(db: Session, station_id: int) -> List[GenerationForecast]:
+def generate_power_forecast_for_station(
+    db: Session,
+    station_id: int,
+    weather_source: str = "OpenWeatherMap",
+    model_id: Optional[int] = None
+) -> List[dict]:
     """
-    Генерує та зберігає в базі прогнозовану потужність генерації (кВт)
-    на основі погоди, сонячних кутів та ваг еталонної нейромережі.
+    Розраховує прогноз генерації за ВКАЗАНИМ ДЖЕРЕЛОМ ПОГОДИ та ВКАЗАНОЮ МОДЕЛЛЮ.
     """
     station = db.query(Station).filter(Station.id == station_id).first()
     if not station:
@@ -32,95 +27,129 @@ def generate_power_forecast(db: Session, station_id: int) -> List[GenerationFore
             detail=f"Сонячну станцію з ID {station_id} не знайдено."
         )
 
-    # 1. Завантажуємо активну модель з вагами з Neon DB
-    model = db.query(NeuralModel).filter(
-        NeuralModel.station_id == station_id,
-        NeuralModel.is_active == True
-    ).first()
-
-    if not model:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Активну нейромережеву модель для станції #{station_id} не знайдено в базі даних."
-        )
-
-    # 2. Завантажуємо збережену погоду
+    # Фільтруємо погоду СТРОГО під обране джерело (OpenWeatherMap / Open-Meteo)
     weather_records = db.query(WeatherForecast).filter(
-        WeatherForecast.station_id == station_id
+        WeatherForecast.station_id == station_id,
+        WeatherForecast.source == weather_source
     ).order_by(WeatherForecast.timestamp.asc()).all()
 
     if not weather_records:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Для станції #{station_id} немає завантаженого прогнозу погоди. Спочатку оновіть погоду з Open-Meteo."
+            detail=f"Немає збереженої погоди від джерела {weather_source} для станції #{station_id}. Спочатку завантажте погоду."
         )
 
-    # 3. Розпаковуємо ваги з JSON
-    st_w = model.weights
-    iw1_1 = np.array(st_w["IW1_1"], dtype=np.float64) # (30, 7)
-    lw2_1 = np.array(st_w["LW2_1"], dtype=np.float64) # (1, 30)
-    b1 = np.array(st_w["b1"], dtype=np.float64)       # (30, 1)
-    b2 = float(st_w["b2"])
-    xoffset = np.array(st_w["xoffset"], dtype=np.float64).reshape(-1, 1) # (7, 1)
-    gain = np.array(st_w["gain"], dtype=np.float64).reshape(-1, 1)       # (7, 1)
-    y_gain = float(st_w["y_gain"])
+    # Завантажуємо модель з БД
+    if model_id:
+        model_record = db.query(NeuralModel).filter(
+            NeuralModel.id == model_id,
+            NeuralModel.station_id == station_id
+        ).first()
+    else:
+        model_record = db.query(NeuralModel).filter(
+            NeuralModel.station_id == station_id,
+            NeuralModel.is_active == True
+        ).first()
+
+    if not model_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ваги нейромережі для станції #{station_id} не знайдено в БД."
+        )
+
+    weights_dict = model_record.weights
+
+    mas_in = np.array([
+        [float(w.st_s) for w in weather_records],
+        [float(w.temperature) for w in weather_records],
+        [float(w.h_svetl) for w in weather_records],
+        [float(w.cloud_cover) for w in weather_records],
+        [float(w.azimuth) for w in weather_records],
+        [float(w.elevation) for w in weather_records],
+        [float(w.ww) for w in weather_records]
+    ], dtype=np.float64)
+
+    # Викликаємо модель ДИНАМІЧНО за її кодом з бази даних (baseline, v2_experimental тощо)
+    model_code = getattr(model_record, "code", "baseline") or "baseline"
+    raw_predictions = execute_model_prediction(model_code, mas_in, weights_dict)
+
+
 
     results = []
+    for i, w in enumerate(weather_records):
+        val = raw_predictions[i]
+        if val < 0: val = 0.0
+        if w.elevation < -0.4: val = 0.0
 
-    for w in weather_records:
-        # Розраховуємо сонячну позицію з урахуванням місцевого часу та часового поясу (watch = 3.0 влітку)
-        sun_pos = calculate_sun_position(station.latitude, station.longitude, w.timestamp, watch=3.0)
-        
-        # Код погодного явища WW (1.0 при значній хмарності >= 15%, 0.0 при ясній погоді - 1-в-1 з open_weather_map_unit.py)
-        ww_val = 1.0 if w.cloud_cover >= 15.0 else 0.0
+        predicted_watts = round(float(val), 6)
+        predicted_kw = round(float(val / 1000.0), 4)
 
-        # Сформований 7-вимірний вектор входів нейромережі 1-в-1 з еталоном:
-        # [x1: st_s, x2: t, x3: h_svetl, x4: Nh, x5: AzSun, x6: Hsun, x7: WW]
-        x_raw = np.array([
-            [float(sun_pos["st_s"])],       # 1. st_s (0-ніч, 1-сутінки, 2-день)
-            [float(w.temperature)],         # 2. t (температура)
-            [float(sun_pos["h_svetl"])],    # 3. h_svetl інтервалу (0.0 ... 1.0)
-            [float(w.cloud_cover)],         # 4. Nh (хмарність)
-            [float(sun_pos["azimuth"])],    # 5. AzSun (азимут сонця)
-            [float(sun_pos["elevation"])],  # 6. Hsun (висота сонця)
-            [float(ww_val)]                 # 7. WW (коди погодних явищ)
-        ], dtype=np.float64)
-
-
-        if sun_pos["elevation"] <= -0.4:
-            # Постпроцесинг 1-в-1 з for_forecast.py: якщо сонце низько під горизонтом (<= -0.4°) -> 0.0 кВт
-            power_kw = 0.0
-
-        else:
-            # Прямий прохід двошарової нейромережі з MATLAB еталону:
-            xp1 = _mapminmax_apply(x_raw, xoffset, gain, ymin=-1.0)
-            a1 = _tansig(b1 + np.dot(iw1_1, xp1))
-            a2 = b2 + np.dot(lw2_1, a1)
-            power_w = _mapminmax_reverse(a2, ymin=-1.0, gain=y_gain, xoffset=0.0)[0, 0]
-            
-            # Переводимо з Ватт у кВт і обрізаємо від'ємні значення
-            power_kw = float(max(0.0, round(power_w / 1000.0, 3)))
-
-
-        # Оновлюємо або створюємо запис у базі
-        existing = db.query(GenerationForecast).filter(
+        # Зберігаємо прогноз із чіткою прив'язкою до weather_source та model_id
+        existing_gen = db.query(GenerationForecast).filter(
             GenerationForecast.station_id == station_id,
+            GenerationForecast.weather_source == weather_source,
+            GenerationForecast.model_id == model_record.id,
             GenerationForecast.timestamp == w.timestamp
         ).first()
 
-        if existing:
-            existing.predicted_power_kw = power_kw
-            existing.model_id = model.id
-            results.append(existing)
+        if existing_gen:
+            existing_gen.predicted_power_watts = predicted_watts
+            existing_gen.predicted_power_kw = predicted_kw
         else:
             gen_record = GenerationForecast(
                 station_id=station_id,
-                model_id=model.id,
+                model_id=model_record.id,
+                weather_source=weather_source,
                 timestamp=w.timestamp,
-                predicted_power_kw=power_kw
+                predicted_power_watts=predicted_watts,
+                predicted_power_kw=predicted_kw
             )
             db.add(gen_record)
-            results.append(gen_record)
+
+        results.append({
+            "timestamp": w.timestamp,
+            "st_s": w.st_s,
+            "elevation": w.elevation,
+            "azimuth": w.azimuth,
+            "predicted_power_watts": predicted_watts,
+            "predicted_power_kw": predicted_kw,
+            "source": weather_source,
+            "model_id": model_record.id
+        })
 
     db.commit()
+    return results
+
+def get_saved_forecast_for_station(
+    db: Session,
+    station_id: int,
+    weather_source: Optional[str] = None
+) -> List[dict]:
+    """Отримує збережений прогноз генерації з фільтром по weather_source"""
+    query = db.query(GenerationForecast, WeatherForecast).join(
+        WeatherForecast,
+        (GenerationForecast.station_id == WeatherForecast.station_id) & 
+        (GenerationForecast.timestamp == WeatherForecast.timestamp) &
+        (GenerationForecast.weather_source == WeatherForecast.source)
+    ).filter(
+        GenerationForecast.station_id == station_id
+    )
+
+    if weather_source:
+        query = query.filter(GenerationForecast.weather_source == weather_source)
+
+    saved_records = query.order_by(GenerationForecast.timestamp.asc()).all()
+
+    results = []
+    for gen, w in saved_records:
+        results.append({
+            "timestamp": gen.timestamp,
+            "st_s": w.st_s,
+            "elevation": w.elevation,
+            "azimuth": w.azimuth,
+            "predicted_power_watts": gen.predicted_power_watts,
+            "predicted_power_kw": gen.predicted_power_kw,
+            "source": gen.weather_source,
+            "model_id": gen.model_id
+        })
     return results

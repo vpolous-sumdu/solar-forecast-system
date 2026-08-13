@@ -3,27 +3,48 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models.generation import GenerationForecast
-from app.schemas.generation import GenerationForecastResponse
-from app.services.forecast_service import generate_power_forecast
+from app.services.forecast_service import generate_power_forecast_for_station, get_saved_forecast_for_station
 
 DbSessionDep = Annotated[Session, Depends(get_db)]
 
 router = APIRouter(
     prefix="/forecast",
-    tags=["Прогноз Генерації СЕС (Generation Forecast)"]
+    tags=["Прогноз Генерації (Forecast)"]
 )
 
-@router.post("/generate/{station_id}", response_model=List[GenerationForecastResponse], status_code=status.HTTP_200_OK)
-def generate_forecast(station_id: int, db: DbSessionDep):
-    """Сформувати та зберегти прогноз генерації (кВт) нейромережею для станції"""
-    forecasts = generate_power_forecast(db, station_id)
-    return forecasts
+@router.get("/{station_id}", status_code=status.HTTP_200_OK)
+def get_forecast(
+    station_id: int,
+    db: DbSessionDep,
+    weather_source: str = "OpenWeatherMap"
+):
+    """Отримати збережений прогноз генерації з БД Neon для вказаного джерела погоди"""
+    results = get_saved_forecast_for_station(db, station_id, weather_source=weather_source)
+    return {
+        "status": "success",
+        "station_id": station_id,
+        "count": len(results),
+        "data": results
+    }
 
-@router.get("/{station_id}", response_model=List[GenerationForecastResponse])
-def get_generation_forecast(station_id: int, db: DbSessionDep):
-    """Отримати збережений прогноз генерації електроенергії з бази даних"""
-    forecasts = db.query(GenerationForecast).filter(
-        GenerationForecast.station_id == station_id
-    ).order_by(GenerationForecast.timestamp.asc()).all()
-    return forecasts
+@router.post("/generate/{station_id}", status_code=status.HTTP_200_OK)
+def generate_forecast(
+    station_id: int,
+    db: DbSessionDep,
+    weather_source: str = "OpenWeatherMap",
+    model_id: int = None
+):
+    """Розрахувати прогноз генерації за обраним джерелом погоди та моделлю"""
+    results = generate_power_forecast_for_station(
+        db,
+        station_id,
+        weather_source=weather_source,
+        model_id=model_id
+    )
+    return {
+        "status": "success",
+        "station_id": station_id,
+        "count": len(results),
+        "data": results
+    }
+
