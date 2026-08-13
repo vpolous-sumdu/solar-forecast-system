@@ -2,19 +2,44 @@
   <div class="card-container">
     <div class="controls">
       <div class="selector-group">
-        <label for="stationSelect" class="select-label">Оберіть сонячну станцію:</label>
-        <select id="stationSelect" class="station-select" (change)="onStationChange($event)">
-          @for (st of stations(); track st.id) {
-            <option [value]="st.id">#{{ st.id }} - {{ st.name }} ({{ st.installed_capacity_kw }} кВт)</option>
-          }
+        <label for="stationSelect" class="select-label">Сонячна станція (СЕС):</label>
+        @if (stations().length === 0 && loading()) {
+          <div class="skeleton-box select-skeleton"></div>
+        } @else {
+          <select id="stationSelect" class="station-select" (change)="onStationChange($event)">
+            @for (st of stations(); track st.id) {
+              <option [value]="st.id">#{{ st.id }} - {{ st.name }} ({{ st.installed_capacity_kw }} кВт)</option>
+            }
+          </select>
+        }
+      </div>
+
+      <div class="selector-group">
+        <label for="weatherProviderSelect" class="select-label">Джерело погоди:</label>
+        <select id="weatherProviderSelect" class="station-select" (change)="onWeatherSourceChange($event)">
+          <option value="OpenWeatherMap">OpenWeatherMap (Еталонні Суми)</option>
+          <option value="Open-Meteo">Open-Meteo (GPS СЕС)</option>
         </select>
       </div>
 
-      <button class="btn" [disabled]="fetching()" (click)="fetchFreshWeather()">
-        @if (fetching()) { Оновлення... } @else { Оновити з Open-Meteo }
-      </button>
+      <div class="selector-group">
+        <label for="modelSelect" class="select-label">Модель нейромережі:</label>
+        <select id="modelSelect" class="station-select">
+          <option value="baseline">Еталонна модель (Baseline 1:1 Delphi/MATLAB)</option>
+          <option value="v2_experimental" disabled>Експериментальна модель V2 (У розробці)</option>
+        </select>
+      </div>
 
 
+      <div class="button-group">
+        <button class="btn btn-secondary" [disabled]="fetching() || fetchingOWM()" (click)="fetchSelectedWeather()">
+          @if (fetching() || fetchingOWM()) { Оновлення... } @else { Завантажити погоду }
+        </button>
+
+        <button class="btn btn-primary" [disabled]="generating() || forecasts().length === 0" (click)="generatePowerForecast()">
+          @if (generating()) { Розрахунок... } @else { Сформувати прогноз генерації }
+        </button>
+      </div>
     </div>
 
     @if (error()) {
@@ -26,11 +51,18 @@
         <thead>
           <tr>
             <th>Дата та Час (UTC)</th>
-            <th>Температура (°C)</th>
-            <th>Хмарність (%)</th>
-            <th>Тиск (гПа)</th>
-            <th>Вологість (%)</th>
-            <th>Вітер (м/с)</th>
+            <th>Джерело Погоди</th>
+            <th>Прогноз Генерації</th>
+            <th>Ніч/Сут/День (st_s)</th>
+            <th>Температура (T)</th>
+            <th>Хмарність (Nh %)</th>
+            <th>Тиск (p)</th>
+            <th>Вологість (U %)</th>
+            <th>Вітер (Ff)</th>
+            <th>h_світ</th>
+            <th>Азимут сонця</th>
+            <th>Висота сонця (Hsun)</th>
+            <th>Явища (WW)</th>
           </tr>
         </thead>
         <tbody>
@@ -38,28 +70,42 @@
             @for (i of [1, 2, 3, 4, 5, 6]; track i) {
               <tr>
                 <td><div class="skeleton-box col-time"></div></td>
-                <td><div class="skeleton-box col-val"></div></td>
-                <td><div class="skeleton-box col-val"></div></td>
-                <td><div class="skeleton-box col-val"></div></td>
-                <td><div class="skeleton-box col-val"></div></td>
-                <td><div class="skeleton-box col-val"></div></td>
+                @for (j of [1,2,3,4,5,6,7,8,9,10,11,12]; track j) {
+                  <td><div class="skeleton-box col-val"></div></td>
+                }
               </tr>
             }
           } @else if (forecasts().length === 0) {
             <tr>
-              <td colspan="6" class="empty-state">
-                Немає збереженого прогнозу для цієї станції. Натисніть "Оновити з Open-Meteo".
+              <td colspan="13" class="empty-state">
+                Немає збереженого прогнозу погоди для цієї станції. Оберіть джерело та натисніть "Завантажити погоду".
               </td>
             </tr>
           } @else {
-            @for (w of forecasts(); track w.id) {
+            @for (w of forecasts(); track w.id; let idx = $index) {
               <tr>
                 <td class="time-cell">{{ w.timestamp | date:'dd.MM.yyyy HH:mm':'UTC' }}</td>
+                <td><span class="badge-source">{{ w.source }}</span></td>
+                <td>
+                  @if (generating() || loadingGen()) {
+                    <div class="skeleton-box col-val"></div>
+                  } @else if (getGenerationForItem(w)) {
+                    <span class="badge-power">{{ getGenerationForItem(w)?.predicted_power_kw }} кВт ({{ getGenerationForItem(w)?.predicted_power_watts }} Вт)</span>
+                  } @else {
+                    <span class="text-muted">—</span>
+                  }
+                </td>
+
+                <td><strong>{{ w.st_s }}</strong></td>
                 <td><strong>{{ w.temperature }} °C</strong></td>
                 <td><span class="badge-cloud">{{ w.cloud_cover }} %</span></td>
                 <td>{{ w.pressure }} гПа</td>
                 <td>{{ w.humidity }} %</td>
                 <td>{{ w.wind_speed }} м/с</td>
+                <td>{{ w.h_svetl }}</td>
+                <td>{{ w.azimuth }}°</td>
+                <td>{{ w.elevation }}°</td>
+                <td>{{ w.ww }}</td>
               </tr>
             }
           }

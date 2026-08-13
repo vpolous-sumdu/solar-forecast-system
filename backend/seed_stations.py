@@ -74,11 +74,14 @@ def seed_and_sync_stations():
         print("--------------------------------------------------")
         print(f"🎉 УСПІШНО! Додано нових: {count_added}, Оновлено/Синхронізовано: {count_updated}")
         print("--------------------------------------------------")
+        return {"added": count_added, "updated": count_updated, "total": count_added + count_updated}
     except Exception as e:
         db.rollback()
         print(f"❌ Помилка: {e}")
+        raise e
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     seed_and_sync_stations()

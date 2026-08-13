@@ -8,7 +8,7 @@ import { Station } from '../models/station.model';
 })
 export class StationService {
   private http = inject(HttpClient);
-  private apiUrl = 'https://solar-forecast-system.onrender.com/api/v1/stations/';
+  private apiUrl = '/stations/';
 
   getStations(): Observable<Station[]> {
     return this.http.get<Station[]>(this.apiUrl);

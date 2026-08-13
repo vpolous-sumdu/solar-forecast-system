@@ -1,20 +1,20 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { GenerationForecast } from '../models/generation.model';
+import { GenerationForecastResponse } from '../models/generation.model';
 
 @Injectable({
   providedIn: 'root'
 })
 export class GenerationService {
   private http = inject(HttpClient);
-  private apiUrl = 'https://solar-forecast-system.onrender.com/api/v1/forecast/';
+  private apiUrl = '/forecast/';
 
-  getGenerationForecast(stationId: number): Observable<GenerationForecast[]> {
-    return this.http.get<GenerationForecast[]>(`${this.apiUrl}${stationId}`);
+  generatePowerForecast(stationId: number, weatherSource: string = 'OpenWeatherMap'): Observable<GenerationForecastResponse> {
+    return this.http.post<GenerationForecastResponse>(`${this.apiUrl}generate/${stationId}?weather_source=${weatherSource}`, {});
   }
 
-  generatePowerForecast(stationId: number): Observable<GenerationForecast[]> {
-    return this.http.post<GenerationForecast[]>(`${this.apiUrl}generate/${stationId}`, {});
+  getSavedForecast(stationId: number, weatherSource: string = 'OpenWeatherMap'): Observable<GenerationForecastResponse> {
+    return this.http.get<GenerationForecastResponse>(`${this.apiUrl}${stationId}?weather_source=${weatherSource}`);
   }
 }

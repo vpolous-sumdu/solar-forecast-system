@@ -8,13 +8,17 @@ import { WeatherForecast } from '../models/weather.model';
 })
 export class WeatherService {
   private http = inject(HttpClient);
-  private apiUrl = 'https://solar-forecast-system.onrender.com/api/v1/weather/';
+  private apiUrl = '/weather/';
 
   getWeatherForecast(stationId: number): Observable<WeatherForecast[]> {
     return this.http.get<WeatherForecast[]>(`${this.apiUrl}${stationId}`);
   }
 
-  fetchFreshWeather(stationId: number): Observable<{ status: string; message: string }> {
-    return this.http.post<{ status: string; message: string }>(`${this.apiUrl}fetch/${stationId}`, {});
+  fetchFreshOpenMeteoWeather(stationId: number): Observable<{ status: string; message: string }> {
+    return this.http.post<{ status: string; message: string }>(`${this.apiUrl}fetch-open-meteo/${stationId}`, {});
+  }
+
+  fetchFreshOpenWeatherMapWeather(stationId: number): Observable<{ status: string; message: string }> {
+    return this.http.post<{ status: string; message: string }>(`${this.apiUrl}fetch-openweathermap/${stationId}`, {});
   }
 }
