@@ -84,12 +84,13 @@ def generate_forecast(
 @router.post("/generate-all", status_code=status.HTTP_200_OK)
 def generate_all_stations_forecast(
         db: DbSessionDep,
-        weather_source: str = "OpenWeatherMap",
+        weather_source: str = "ALL",
         model_id: Optional[int] = None,
         date_param: Optional[date] = Query(None, alias="date", description="Дата для розрахунку прогнозу (YYYY-MM-DD)")
 ):
     """
-    Пакетний розрахунок прогнозу генерації для ВСІХ зареєстрованих СЕС на вказану дату (або завтра за замовчуванням).
+    Пакетний розрахунок прогнозу генерації для ВСІХ зареєстрованих СЕС на вказану дату.
+    За замовчуванням (weather_source="ALL") розраховує одразу для OpenWeatherMap та Open-Meteo.
     """
     report = run_batch_forecast_for_all_stations(
         db=db,
@@ -104,13 +105,13 @@ def generate_all_stations_forecast(
 def cron_daily_batch_forecast(
         db: DbSessionDep,
         x_cron_secret: Optional[str] = Header(None, alias="X-Cron-Secret"),
-        weather_source: str = Query("OpenWeatherMap", description="Джерело погоди за замовчуванням"),
+        weather_source: str = Query("ALL", description="Джерело погоди (ALL / OpenWeatherMap / Open-Meteo)"),
         model_id: Optional[int] = Query(None, description="ID моделі нейромережі"),
         date_param: Optional[date] = Query(None, alias="date", description="Опціональна дата (за замовчуванням завтра)")
 ):
     """
-    Спеціальний ендпоінт для GitHub Actions / Vercel Cron.
-    Автоматично розраховує погодинний прогноз генерації на наступний день для всіх 12 станцій.
+    Спеціальний захищений ендпоінт для GitHub Actions / Vercel Cron.
+    Автоматично розраховує погодинний прогноз генерації на наступний день для всіх 12 станцій для обох джерел погоди.
     """
     expected_secret = os.getenv("CRON_SECRET")
     if expected_secret and x_cron_secret != expected_secret:
@@ -126,4 +127,3 @@ def cron_daily_batch_forecast(
         model_id=model_id
     )
     return report
-

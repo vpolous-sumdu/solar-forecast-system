@@ -179,11 +179,12 @@ def get_saved_forecast_for_station(
 def run_batch_forecast_for_all_stations(
         db: Session,
         target_date: Optional[date] = None,
-        weather_source: str = "OpenWeatherMap",
+        weather_source: str = "ALL",
         model_id: Optional[int] = None
 ) -> dict:
     """
     Пакетно завантажує прогноз погоди та генерує прогноз генерації для ВСІХ зареєстрованих станцій.
+    Підтримує одночасний розрахунок для кількох джерел погоди (weather_source="ALL" або "OpenWeatherMap,Open-Meteo").
     Ідеально підходить для Cron-планувальника або фонового виконання о 23:05.
     """
     from datetime import timedelta
@@ -209,55 +210,78 @@ def run_batch_forecast_for_all_stations(
             "details": []
         }
 
+    # Визначаємо список джерел погоди для обробки
+    if weather_source.upper() == "ALL":
+        sources_to_process = ["OpenWeatherMap", "Open-Meteo"]
+    elif "," in weather_source:
+        sources_to_process = [s.strip() for s in weather_source.split(",") if s.strip()]
+    else:
+        sources_to_process = [weather_source]
+
     processed_count = 0
     total_predicted_kwh = 0.0
     details = []
 
-    for s in stations:
-        try:
-            # 1. Завантажуємо погоду для обраного джерела
-            if weather_source == "Open-Meteo":
-                fetch_and_save_weather(db, s.id, target_date=target_date)
-            elif weather_source == "Open-Meteo-Archive":
-                fetch_and_save_archive_weather(db, s.id, target_date=target_date)
-            else:
-                fetch_and_save_owm_weather(db, s.id, target_date=target_date)
+    for src in sources_to_process:
+        src_processed = 0
+        src_kwh = 0.0
+        src_details = []
 
-            # 2. Розраховуємо прогноз нейромережею
-            gen_results = generate_power_forecast_for_station(
-                db=db,
-                station_id=s.id,
-                target_date=target_date,
-                weather_source=weather_source,
-                model_id=model_id
-            )
+        for s in stations:
+            try:
+                # 1. Завантажуємо погоду для конкретного джерела
+                if src == "Open-Meteo":
+                    fetch_and_save_weather(db, s.id, target_date=target_date)
+                elif src == "Open-Meteo-Archive":
+                    fetch_and_save_archive_weather(db, s.id, target_date=target_date)
+                else:
+                    fetch_and_save_owm_weather(db, s.id, target_date=target_date)
 
-            station_daily_kwh = sum(item["predicted_power_kw"] for item in gen_results)
-            total_predicted_kwh += station_daily_kwh
-            processed_count += 1
+                # 2. Розраховуємо прогноз нейромережею
+                gen_results = generate_power_forecast_for_station(
+                    db=db,
+                    station_id=s.id,
+                    target_date=target_date,
+                    weather_source=src,
+                    model_id=model_id
+                )
 
-            details.append({
-                "station_id": s.id,
-                "station_name": s.name,
-                "status": "success",
-                "predicted_daily_kwh": round(station_daily_kwh, 2),
-                "hourly_points": len(gen_results)
-            })
-        except Exception as e:
-            details.append({
-                "station_id": s.id,
-                "station_name": s.name,
-                "status": "error",
-                "error": str(e)
-            })
+                station_daily_kwh = sum(item["predicted_power_kw"] for item in gen_results)
+                src_kwh += station_daily_kwh
+                src_processed += 1
+
+                src_details.append({
+                    "station_id": s.id,
+                    "station_name": s.name,
+                    "status": "success",
+                    "predicted_daily_kwh": round(station_daily_kwh, 2),
+                    "hourly_points": len(gen_results)
+                })
+            except Exception as e:
+                src_details.append({
+                    "station_id": s.id,
+                    "station_name": s.name,
+                    "status": "error",
+                    "error": str(e)
+                })
+
+        processed_count += src_processed
+        total_predicted_kwh += src_kwh
+        details.append({
+            "weather_source": src,
+            "stations_processed": src_processed,
+            "subtotal_predicted_kwh": round(src_kwh, 2),
+            "stations": src_details
+        })
 
     return {
         "status": "success",
         "target_date": target_date.isoformat(),
-        "weather_source": weather_source,
+        "weather_sources": sources_to_process,
         "stations_total": len(stations),
-        "stations_processed": processed_count,
+        "total_operations_processed": processed_count,
         "total_predicted_kwh": round(total_predicted_kwh, 2),
         "details": details
     }
+
 
