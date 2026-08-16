@@ -8,7 +8,6 @@ import {ComparisonDatesResponse, ComparisonResponse} from '../models/comparison.
 })
 export class ComparisonService {
     private http = inject(HttpClient);
-    private apiUrl = '/comparison/';
 
     getComparison(
         stationId: number,
@@ -28,15 +27,15 @@ export class ComparisonService {
             params = params.set('model_id', modelId.toString());
         }
 
-        return this.http.get<ComparisonResponse>(`${this.apiUrl}${stationId}`, {params});
+        return this.http.get<ComparisonResponse>(`/api/v1/comparison/${stationId}`, {params});
     }
 
     getAvailableDates(stationId: number): Observable<ComparisonDatesResponse> {
-        return this.http.get<ComparisonDatesResponse>(`${this.apiUrl}${stationId}/dates`);
+        return this.http.get<ComparisonDatesResponse>(`/api/v1/comparison/${stationId}/dates`);
     }
 
     syncActual(stationId: number, date: string): Observable<any> {
         const params = new HttpParams().set('date', date);
-        return this.http.post(`${this.apiUrl}sync-actual/${stationId}`, {}, {params});
+        return this.http.post<any>(`/api/v1/comparison/sync-actual/${stationId}`, {}, {params});
     }
 }

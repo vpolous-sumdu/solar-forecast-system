@@ -4,7 +4,8 @@ import {StationService} from '../../core/services/station.service';
 import {ComparisonService} from '../../core/services/comparison.service';
 import {Station} from '../../core/models/station.model';
 import {ComparisonResponse} from '../../core/models/comparison.model';
-import {ChartSeries, PowerChartComponent} from '../../shared/components/power-chart/power-chart.component';
+import {ChartSeries} from '../../core/models/chart.model';
+import {PowerChartComponent} from '../../shared/components/power-chart/power-chart.component';
 
 @Component({
     selector: 'app-comparison',

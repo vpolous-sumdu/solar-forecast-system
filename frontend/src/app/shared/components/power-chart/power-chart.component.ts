@@ -8,15 +8,11 @@ import {
     afterNextRender
 } from '@angular/core';
 import {Chart, registerables} from 'chart.js';
+import {ChartSeries} from '../../../core/models/chart.model';
 
 Chart.register(...registerables);
 
-export interface ChartSeries {
-    name: string;
-    data: number[];
-    color: string;
-    fillColor?: string;
-}
+export type {ChartSeries};
 
 @Component({
     selector: 'app-power-chart',

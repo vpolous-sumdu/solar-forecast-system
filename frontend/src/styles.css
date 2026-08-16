@@ -84,31 +84,3 @@ body {
   }
 }
 
-/* Chart / Container Loading Overlay */
-.loading-overlay {
-  position: relative;
-}
-
-.chart-loading-backdrop {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(2px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  z-index: 10;
-  border-radius: var(--radius-card);
-}
-
-.loading-text {
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-

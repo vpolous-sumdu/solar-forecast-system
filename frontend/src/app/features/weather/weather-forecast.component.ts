@@ -5,7 +5,8 @@ import {WeatherService} from '../../core/services/weather.service';
 import {GenerationService} from '../../core/services/generation.service';
 import {Station} from '../../core/models/station.model';
 import {WeatherForecast} from '../../core/models/weather.model';
-import {PowerChartComponent, ChartSeries} from '../../shared/components/power-chart/power-chart.component';
+import {ChartSeries} from '../../core/models/chart.model';
+import {PowerChartComponent} from '../../shared/components/power-chart/power-chart.component';
 
 @Component({
     selector: 'app-weather-forecast',
