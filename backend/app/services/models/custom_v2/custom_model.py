@@ -6,7 +6,7 @@ import numpy as np
 
 def run_v2_experimental_forecast(mas_in: np.ndarray, weights_dict: dict) -> np.ndarray:
     """
-    Ваша нова експериментальна модель V2.
+    Експериментальна модель V2.
     """
     # Наприклад, кастомні розрахунки:
     # return custom_predict(mas_in)
