@@ -33,11 +33,11 @@ def get_station_neural_models(station_id: int, db: DbSessionDep):
             "station_id": m.station_id,
             "name": m.name,
             "code": m.code,
-            "is_active": m.is_active,
             "created_at": m.created_at
         }
         for m in models
     ]
+
 
 
 @router.get("/{station_id}", status_code=status.HTTP_200_OK)

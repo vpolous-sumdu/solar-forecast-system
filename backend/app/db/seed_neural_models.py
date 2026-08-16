@@ -44,15 +44,14 @@ def seed_neural_models():
 
             if existing_model:
                 existing_model.weights = station_weights
-                existing_model.is_active = True
             else:
                 new_model = NeuralModel(
                     station_id=station.id,
                     name="MATLAB_Baseline_v1.0",
-                    is_active=True,
                     weights=station_weights
                 )
                 db.add(new_model)
+
 
             seeded_count += 1
 

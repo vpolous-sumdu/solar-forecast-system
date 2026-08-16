@@ -1,6 +1,8 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, JSON, func
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON, func
 from sqlalchemy.orm import relationship
+
 from app.db.session import Base
+
 
 class NeuralModel(Base):
     __tablename__ = "neural_models"
@@ -9,7 +11,6 @@ class NeuralModel(Base):
     station_id = Column(Integer, ForeignKey("stations.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String(100), nullable=False, default="MATLAB_Baseline_v1.0")
     code = Column(String(50), nullable=False, default="baseline")
-    is_active = Column(Boolean, nullable=False, default=True)
     weights = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 

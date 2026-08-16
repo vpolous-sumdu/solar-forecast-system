@@ -106,8 +106,11 @@ export class WeatherForecastComponent implements OnInit {
             next: (modelList) => {
                 this.models.set(modelList);
                 if (modelList.length > 0) {
-                    const active = modelList.find(m => m.is_active) || modelList[0];
-                    this.selectedModelId.set(active.id);
+                    const currentSelected = this.selectedModelId();
+                    const exists = modelList.some(m => m.id === currentSelected);
+                    if (!currentSelected || !exists) {
+                        this.selectedModelId.set(modelList[0].id);
+                    }
                 } else {
                     this.selectedModelId.set(null);
                 }

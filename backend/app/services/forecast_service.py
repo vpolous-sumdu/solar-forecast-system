@@ -60,9 +60,9 @@ def generate_power_forecast_for_station(
         ).first()
     else:
         model_record = db.query(NeuralModel).filter(
-            NeuralModel.station_id == station_id,
-            NeuralModel.is_active == True
-        ).first()
+            NeuralModel.station_id == station_id
+        ).order_by(NeuralModel.id.asc()).first()
+
 
     if not model_record:
         raise HTTPException(

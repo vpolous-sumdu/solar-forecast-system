@@ -136,7 +136,7 @@
                         @for (w of forecasts(); track w.id; let idx = $index) {
                             <tr>
                                 <td class="time-cell">{{ w.timestamp | date:'dd.MM.yyyy HH:mm':'UTC' }}</td>
-                                <td><span class="badge-source">{{ w.source }}</span></td>
+                                <td><strong>{{ w.source }}</strong></td>
                                 <td>
                                     @if (generating() || loadingGen()) {
                                         <div class="skeleton-box col-val"></div>
@@ -148,9 +148,9 @@
                                     }
                                 </td>
 
-                                <td><strong>{{ w.st_s }}</strong></td>
-                                <td><strong>{{ w.temperature }} °C</strong></td>
-                                <td><span class="badge-cloud">{{ w.cloud_cover }} %</span></td>
+                                <td>{{ w.st_s }}</td>
+                                <td>{{ w.temperature }} °C</td>
+                                <td>{{ w.cloud_cover }} %</td>
                                 <td>{{ w.pressure }} гПа</td>
                                 <td>{{ w.humidity }} %</td>
                                 <td>{{ w.wind_speed }} м/с</td>
