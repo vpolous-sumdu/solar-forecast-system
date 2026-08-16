@@ -31,18 +31,15 @@ def get_comparison(
     """
     Отримати порівняння прогнозованої та фактичної генерації за вказану дату та станцію.
     """
+    from datetime import timedelta
     if date_str:
         try:
             target_date = date.fromisoformat(date_str)
         except ValueError:
-            target_date = date.today()
+            target_date = date.today() - timedelta(days=1)
     else:
-        # Якщо дата не вказана, беремо першу доступну дату з БД або сьогодні
-        available = get_available_comparison_dates(db, station_id)
-        if available:
-            target_date = date.fromisoformat(available[0])
-        else:
-            target_date = date.today()
+        # За замовчуванням беремо попередній день (вчора)
+        target_date = date.today() - timedelta(days=1)
 
     result = compare_forecast_and_actual_for_date(
         db=db,

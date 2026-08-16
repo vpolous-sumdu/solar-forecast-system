@@ -23,7 +23,7 @@ export class ComparisonComponent implements OnInit {
 
     stations = signal<Station[]>([]);
     selectedStationId = signal<number | null>(null);
-    selectedDate = signal<string>('');
+    selectedDate = signal<string>(this.getDefaultDate());
     availableDates = signal<string[]>([]);
     selectedWeatherSource = signal<string>('OpenWeatherMap');
     models = signal<NeuralModel[]>([]);
@@ -34,6 +34,12 @@ export class ComparisonComponent implements OnInit {
     loading = signal<boolean>(false);
     syncing = signal<boolean>(false);
     error = signal<string | null>(null);
+
+    private getDefaultDate(): string {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        return yesterday.toISOString().split('T')[0];
+    }
 
     chartLabels = computed<string[]>(() => {
         const data = this.comparisonData();
@@ -111,28 +117,22 @@ export class ComparisonComponent implements OnInit {
 
     loadAvailableDates(stationId: number): void {
         this.loading.set(true);
+        const yesterdayDate = this.getDefaultDate(); // Завжди попередній день (вчора)
+        this.selectedDate.set(yesterdayDate);
+
         this.comparisonService.getAvailableDates(stationId).subscribe({
             next: (res) => {
                 this.availableDates.set(res.dates);
-                const currentDate = this.selectedDate();
-                if (currentDate && res.dates.includes(currentDate)) {
-                    this.loadComparison(stationId, currentDate);
-                } else if (res.dates.length > 0) {
-                    this.selectedDate.set(res.dates[0]);
-                    this.loadComparison(stationId, res.dates[0]);
-                } else {
-                    const dateToUse = currentDate || new Date().toISOString().split('T')[0];
-                    this.selectedDate.set(dateToUse);
-                    this.loadComparison(stationId, dateToUse);
-                }
+                // Завантажуємо порівняння строго на попередній день
+                this.loadComparison(stationId, yesterdayDate);
             },
             error: () => {
-                const dateToUse = this.selectedDate() || new Date().toISOString().split('T')[0];
-                this.selectedDate.set(dateToUse);
-                this.loadComparison(stationId, dateToUse);
+                this.loadComparison(stationId, yesterdayDate);
             }
         });
     }
+
+
 
     onStationChange(event: Event): void {
         const select = event.target as HTMLSelectElement;

@@ -70,8 +70,11 @@ export class WeatherForecastComponent implements OnInit {
     });
 
     private getDefaultDate(): string {
-        return '2026-08-14';
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        return tomorrow.toISOString().split('T')[0];
     }
+
 
     ngOnInit(): void {
         this.loadStations();

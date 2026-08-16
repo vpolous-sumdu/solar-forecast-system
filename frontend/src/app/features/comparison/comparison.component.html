@@ -93,9 +93,10 @@
                 <div class="status-warning">
                     Для станції <strong>#{{ comparisonData()?.station_id }}</strong> на дату
                     <strong>{{ comparisonData()?.date }}</strong> немає збереженого прогнозу генерації в БД. Перейдіть
-                    на вкладку «Прогноз Генерації» та згенеруйте прогноз.
+                    на вкладку «Прогноз генерації» та згенеруйте прогноз.
                 </div>
             }
+
 
             <!-- Підсумкова таблиця (показується при завантаженні зі скелетонами або коли є дані) -->
             @if (loading() || syncing() || (comparisonData() && comparisonData()?.has_forecast_data)) {
