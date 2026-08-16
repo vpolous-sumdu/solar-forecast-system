@@ -2,9 +2,11 @@ import {Component, computed, inject, OnInit, signal} from '@angular/core';
 import {CommonModule, DecimalPipe} from '@angular/common';
 import {StationService} from '../../core/services/station.service';
 import {ComparisonService} from '../../core/services/comparison.service';
+import {GenerationService} from '../../core/services/generation.service';
 import {Station} from '../../core/models/station.model';
 import {ComparisonResponse} from '../../core/models/comparison.model';
 import {ChartSeries} from '../../core/models/chart.model';
+import {NeuralModel} from '../../core/models/neural-model.model';
 import {PowerChartComponent} from '../../shared/components/power-chart/power-chart.component';
 
 @Component({
@@ -17,13 +19,16 @@ import {PowerChartComponent} from '../../shared/components/power-chart/power-cha
 export class ComparisonComponent implements OnInit {
     private stationService = inject(StationService);
     private comparisonService = inject(ComparisonService);
+    private generationService = inject(GenerationService);
 
     stations = signal<Station[]>([]);
     selectedStationId = signal<number | null>(null);
     selectedDate = signal<string>('');
     availableDates = signal<string[]>([]);
     selectedWeatherSource = signal<string>('OpenWeatherMap');
-    selectedModel = signal<string>('baseline');
+    models = signal<NeuralModel[]>([]);
+    selectedModelId = signal<number | null>(null);
+    loadingModels = signal<boolean>(false);
 
     comparisonData = signal<ComparisonResponse | null>(null);
     loading = signal<boolean>(false);
@@ -70,6 +75,7 @@ export class ComparisonComponent implements OnInit {
                 this.stations.set(data);
                 if (data.length > 0) {
                     this.selectedStationId.set(data[0].id);
+                    this.loadModels(data[0].id);
                     this.loadAvailableDates(data[0].id);
                 } else {
                     this.loading.set(false);
@@ -78,6 +84,27 @@ export class ComparisonComponent implements OnInit {
             error: () => {
                 this.error.set('Не вдалося завантажити список СЕС');
                 this.loading.set(false);
+            }
+        });
+    }
+
+    loadModels(stationId: number): void {
+        this.loadingModels.set(true);
+        this.generationService.getNeuralModels(stationId).subscribe({
+            next: (modelList) => {
+                this.models.set(modelList);
+                if (modelList.length > 0) {
+                    const active = modelList.find(m => m.is_active) || modelList[0];
+                    this.selectedModelId.set(active.id);
+                } else {
+                    this.selectedModelId.set(null);
+                }
+                this.loadingModels.set(false);
+            },
+            error: () => {
+                this.models.set([]);
+                this.selectedModelId.set(null);
+                this.loadingModels.set(false);
             }
         });
     }
@@ -113,7 +140,21 @@ export class ComparisonComponent implements OnInit {
         this.loading.set(true);
         this.error.set(null);
         this.selectedStationId.set(stationId);
+        this.loadModels(stationId);
         this.loadAvailableDates(stationId);
+    }
+
+    onModelChange(event: Event): void {
+        const select = event.target as HTMLSelectElement;
+        const modelId = Number(select.value);
+        this.selectedModelId.set(modelId);
+        this.loading.set(true);
+        this.error.set(null);
+        const stationId = this.selectedStationId();
+        const dateStr = this.selectedDate();
+        if (stationId && dateStr) {
+            this.loadComparison(stationId, dateStr);
+        }
     }
 
     onDateSelectChange(event: Event): void {
@@ -160,7 +201,7 @@ export class ComparisonComponent implements OnInit {
             stationId,
             dateStr,
             this.selectedWeatherSource(),
-            undefined,
+            this.selectedModelId() || undefined,
             forceSync
         ).subscribe({
             next: (res) => {

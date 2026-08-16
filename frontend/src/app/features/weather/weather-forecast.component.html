@@ -37,19 +37,20 @@
 
             <div class="selector-group">
                 <label for="modelSelect" class="select-label">Модель нейромережі:</label>
-                <select id="modelSelect" class="station-select">
-                    <option value="baseline">Еталонна модель (Baseline 1:1 Delphi/MATLAB)</option>
-                    <option value="v2_experimental" disabled>Експериментальна модель V2 (У розробці)</option>
-                </select>
-            </div>
-
-
-            <div class="selector-group">
-                <label for="compareSourcesToggle" class="select-label checkbox-label">
-                    <input type="checkbox" id="compareSourcesToggle" (change)="onCompareToggleChange($event)"
-                           [checked]="compareMode()">
-                    Порівняти джерела погоди (OWM vs Open-Meteo)
-                </label>
+                @if (models().length === 0 && (loading() || loadingModels())) {
+                    <div class="skeleton-box select-skeleton"></div>
+                } @else {
+                    <select id="modelSelect" class="station-select" (change)="onModelChange($event)">
+                        @for (m of models(); track m.id) {
+                            <option [value]="m.id" [selected]="m.id === selectedModelId()">
+                                {{ m.name }} ({{ m.code }})
+                            </option>
+                        }
+                        @if (models().length === 0) {
+                            <option value="" disabled selected>Немає доступних моделей у БД</option>
+                        }
+                    </select>
+                }
             </div>
 
             <div class="button-group">
