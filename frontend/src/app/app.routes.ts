@@ -1,16 +1,11 @@
-import { Routes } from '@angular/router';
+import {Routes} from '@angular/router';
+import {StationListComponent} from './features/stations/station-list.component';
+import {WeatherForecastComponent} from './features/weather/weather-forecast.component';
+import {ComparisonComponent} from './features/comparison/comparison.component';
 
 export const routes: Routes = [
-  {
-    path: '',
-    loadComponent: () => import('./features/stations/station-list.component').then(m => m.StationListComponent)
-  },
-  {
-    path: 'forecast',
-    loadComponent: () => import('./features/weather/weather-forecast.component').then(m => m.WeatherForecastComponent)
-  },
-  {
-    path: '**',
-    redirectTo: ''
-  }
+    {path: '', component: StationListComponent},
+    {path: 'forecast', component: WeatherForecastComponent},
+    {path: 'comparison', component: ComparisonComponent},
+    {path: '**', redirectTo: ''}
 ];

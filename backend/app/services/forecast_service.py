@@ -1,4 +1,5 @@
 import numpy as np
+from datetime import datetime, date, timezone
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -12,13 +13,14 @@ from app.services.models.model_registry import execute_model_prediction
 
 
 def generate_power_forecast_for_station(
-    db: Session,
-    station_id: int,
-    weather_source: str = "OpenWeatherMap",
-    model_id: Optional[int] = None
+        db: Session,
+        station_id: int,
+        target_date: Optional[date] = None,
+        weather_source: str = "OpenWeatherMap",
+        model_id: Optional[int] = None
 ) -> List[dict]:
     """
-    Розраховує прогноз генерації за ВКАЗАНИМ ДЖЕРЕЛОМ ПОГОДИ та ВКАЗАНОЮ МОДЕЛЛЮ.
+    Розраховує прогноз генерації за ВКАЗАНИМ ДЖЕРЕЛОМ ПОГОДИ, ДАТОЮ та ВКАЗАНОЮ МОДЕЛЛЮ.
     """
     station = db.query(Station).filter(Station.id == station_id).first()
     if not station:
@@ -27,16 +29,27 @@ def generate_power_forecast_for_station(
             detail=f"Сонячну станцію з ID {station_id} не знайдено."
         )
 
-    # Фільтруємо погоду СТРОГО під обране джерело (OpenWeatherMap / Open-Meteo)
-    weather_records = db.query(WeatherForecast).filter(
+    # Фільтруємо погоду під обране джерело (OpenWeatherMap / Open-Meteo) та обрану дату
+    weather_query = db.query(WeatherForecast).filter(
         WeatherForecast.station_id == station_id,
         WeatherForecast.source == weather_source
-    ).order_by(WeatherForecast.timestamp.asc()).all()
+    )
+
+    if target_date is not None:
+        start_dt = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0, tzinfo=timezone.utc)
+        end_dt = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59, tzinfo=timezone.utc)
+        weather_query = weather_query.filter(
+            WeatherForecast.timestamp >= start_dt,
+            WeatherForecast.timestamp <= end_dt
+        )
+
+    weather_records = weather_query.order_by(WeatherForecast.timestamp.asc()).all()
 
     if not weather_records:
+        date_info = f" на дату {target_date.isoformat()}" if target_date else ""
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Немає збереженої погоди від джерела {weather_source} для станції #{station_id}. Спочатку завантажте погоду."
+            detail=f"Немає збереженої погоди від джерела {weather_source} для станції #{station_id}{date_info}. Спочатку завантажте погоду."
         )
 
     # Завантажуємо модель з БД
@@ -72,8 +85,6 @@ def generate_power_forecast_for_station(
     # Викликаємо модель ДИНАМІЧНО за її кодом з бази даних (baseline, v2_experimental тощо)
     model_code = getattr(model_record, "code", "baseline") or "baseline"
     raw_predictions = execute_model_prediction(model_code, mas_in, weights_dict)
-
-
 
     results = []
     for i, w in enumerate(weather_records):
@@ -120,20 +131,30 @@ def generate_power_forecast_for_station(
     db.commit()
     return results
 
+
 def get_saved_forecast_for_station(
-    db: Session,
-    station_id: int,
-    weather_source: Optional[str] = None
+        db: Session,
+        station_id: int,
+        target_date: Optional[date] = None,
+        weather_source: Optional[str] = None
 ) -> List[dict]:
-    """Отримує збережений прогноз генерації з фільтром по weather_source"""
+    """Отримує збережений прогноз генерації з фільтром по даті та джерелом прогнозу погоди"""
     query = db.query(GenerationForecast, WeatherForecast).join(
         WeatherForecast,
-        (GenerationForecast.station_id == WeatherForecast.station_id) & 
+        (GenerationForecast.station_id == WeatherForecast.station_id) &
         (GenerationForecast.timestamp == WeatherForecast.timestamp) &
         (GenerationForecast.weather_source == WeatherForecast.source)
     ).filter(
         GenerationForecast.station_id == station_id
     )
+
+    if target_date is not None:
+        start_dt = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0, tzinfo=timezone.utc)
+        end_dt = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59, tzinfo=timezone.utc)
+        query = query.filter(
+            GenerationForecast.timestamp >= start_dt,
+            GenerationForecast.timestamp <= end_dt
+        )
 
     if weather_source:
         query = query.filter(GenerationForecast.weather_source == weather_source)

@@ -1,20 +1,30 @@
 .chart-wrapper {
-  margin-bottom: 2rem;
-  padding: 1.25rem;
-  background: var(--canvas-bg, #ffffff);
-  border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: var(--radius-card, 12px);
+    margin-bottom: 2rem;
+    padding: 1.25rem;
+    background: var(--canvas-bg, #ffffff);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: var(--radius-card, 12px);
 }
 
 .chart-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-primary, #0f172a);
-  margin-bottom: 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary, #0f172a);
+    margin-bottom: 1rem;
 }
 
 .chart-container {
-  position: relative;
-  height: 280px;
-  width: 100%;
+    position: relative;
+    height: 280px;
+    width: 100%;
+}
+
+.chart-skeleton-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 5;
+    border-radius: var(--radius-small, 6px);
 }

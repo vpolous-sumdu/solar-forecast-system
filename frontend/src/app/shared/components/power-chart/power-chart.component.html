@@ -1,8 +1,12 @@
 <div class="chart-wrapper">
-  @if (title()) {
-    <div class="chart-title">{{ title() }}</div>
-  }
-  <div class="chart-container">
-    <canvas #chartCanvas></canvas>
-  </div>
+    @if (title()) {
+        <div class="chart-title">{{ title() }}</div>
+    }
+
+    <div class="chart-container">
+        @if (loading()) {
+            <div class="skeleton-box chart-skeleton-overlay"></div>
+        }
+        <canvas #chartCanvas></canvas>
+    </div>
 </div>

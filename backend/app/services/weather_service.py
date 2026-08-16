@@ -1,22 +1,22 @@
+from datetime import datetime, date, timezone, timedelta
+from typing import Optional
+
 import requests
-import math
-from datetime import datetime, timezone, timedelta
-from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
 from app.models.station import Station
 from app.models.weather import WeatherForecast
 from app.services.sun_service import calculate_sun_position
 
-
-
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 OWM_APPID = "4d42571040d0367f79e4a83bfb696d4a"
 OWM_URL = "https://api.openweathermap.org/data/2.5/forecast"
 
-def fetch_and_save_weather(db: Session, station_id: int) -> int:
+
+def fetch_and_save_weather(db: Session, station_id: int, target_date: Optional[date] = None) -> int:
     """
-    Завантажує погодинний прогноз погоди на завтра з Open-Meteo
+    Завантажує погодинний прогноз погоди на обрану дату (або завтра за замовчуванням) з Open-Meteo
     та зберігає/оновлює його у хмарній базі даних Neon PostgreSQL разом із сонячними полями.
     """
     station = db.query(Station).filter(Station.id == station_id).first()
@@ -26,7 +26,8 @@ def fetch_and_save_weather(db: Session, station_id: int) -> int:
             detail=f"Сонячну станцію з ID {station_id} не знайдено."
         )
 
-    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).date()
+    if target_date is None:
+        target_date = (datetime.now(timezone.utc) + timedelta(days=1)).date()
 
     params = {
         "latitude": station.latitude,
@@ -34,8 +35,8 @@ def fetch_and_save_weather(db: Session, station_id: int) -> int:
         "hourly": "temperature_2m,relative_humidity_2m,surface_pressure,cloud_cover,wind_speed_10m",
         "wind_speed_unit": "ms",
         "timezone": "UTC",
-        "start_date": tomorrow.isoformat(),
-        "end_date": tomorrow.isoformat()
+        "start_date": target_date.isoformat(),
+        "end_date": target_date.isoformat()
     }
 
     try:
@@ -70,13 +71,11 @@ def fetch_and_save_weather(db: Session, station_id: int) -> int:
         day_of_week = dt_utc.isoweekday()
         ww = 0.0
 
-
         existing = db.query(WeatherForecast).filter(
             WeatherForecast.station_id == station_id,
             WeatherForecast.source == "Open-Meteo",
             WeatherForecast.timestamp == dt_utc
         ).first()
-
 
         if existing:
             existing.temperature = temperatures[i]
@@ -115,15 +114,18 @@ def fetch_and_save_weather(db: Session, station_id: int) -> int:
     db.commit()
     return saved_count
 
+
 def _incl(mr: dict, lr_yy: int, lr_mm: int, lr_day: int, lr_hh_in: float) -> bool:
     """Точний аналог функції Incl(mr, lr) з unit2.py"""
     return (mr["yy"] == lr_yy) and (mr["mm"] == lr_mm) and (mr["day"] == lr_day) and (mr["hh"] >= lr_hh_in)
+
 
 def _incl2(mr: dict, lr_yy: int, lr_mm: int, lr_day: int) -> bool:
     """Точний аналог функції Incl2(mr, lr) з unit2.py"""
     return (mr["yy"] == lr_yy) and (mr["mm"] == lr_mm) and (mr["day"] == lr_day) and (mr["hh"] >= 0)
 
-def fetch_and_save_owm_weather(db: Session, station_id: int) -> int:
+
+def fetch_and_save_owm_weather(db: Session, station_id: int, target_date: Optional[date] = None) -> int:
     """
     Завантажує прогноз погоди з OpenWeatherMap та застосовує точний алгоритм
     AddMeteoData 1-в-1 з розповсюдженням даних із unit2.py + додає всі астрономічні поля!
@@ -134,6 +136,9 @@ def fetch_and_save_owm_weather(db: Session, station_id: int) -> int:
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Сонячну станцію з ID {station_id} не знайдено."
         )
+
+    if target_date is None:
+        target_date = (datetime.now(timezone.utc) + timedelta(days=1)).date()
 
     # Хардкоджені координати міста Суми (50.883333, 34.783333) 1-в-1 з еталоном (open_weather_map_unit.py)
     baseline_lat = 50.883333
@@ -167,7 +172,7 @@ def fetch_and_save_owm_weather(db: Session, station_id: int) -> int:
     for item in weather_list[:40]:
         dt_timestamp = int(item["dt"])
         local_time = datetime.fromtimestamp(dt_timestamp + timezone_offset, tz=timezone.utc)
-        
+
         Am.append({
             "yy": local_time.year,
             "mm": local_time.month,
@@ -185,26 +190,25 @@ def fetch_and_save_owm_weather(db: Session, station_id: int) -> int:
             "WW": 0.0 if int(item["weather"][0]["id"]) == 800 else 1.0
         })
 
-    # Крок 2: Формування 24-годинного масиву lm на завтра (1-в-1 з AddMeteoData у unit2.py)
-    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).date()
+    # Крок 2: Формування 24-годинного масиву lm на обрану дату (1-в-1 з AddMeteoData у unit2.py)
     saved_count = 0
 
     for hour in range(24):
-        target_dt = datetime(tomorrow.year, tomorrow.month, tomorrow.day, hour, 0, 0, tzinfo=timezone.utc)
+        target_dt = datetime(target_date.year, target_date.month, target_date.day, hour, 0, 0, tzinfo=timezone.utc)
         hh_in = float(hour)
         hh = float(hour + 1)
-        
+
         matched_meteo = None
         interval = hh - hh_in
-        
+
         if abs(3.0 - interval) <= 3.5:
             for j in range(len(Am)):
-                if _incl(Am[j], tomorrow.year, tomorrow.month, tomorrow.day, hh_in):
+                if _incl(Am[j], target_date.year, target_date.month, target_date.day, hh_in):
                     matched_meteo = Am[j]
                     break
-                    
+
             if not matched_meteo:
-                dt_next = datetime(tomorrow.year, tomorrow.month, tomorrow.day) + timedelta(days=1)
+                dt_next = datetime(target_date.year, target_date.month, target_date.day) + timedelta(days=1)
                 for j in range(len(Am)):
                     if _incl2(Am[j], dt_next.year, dt_next.month, dt_next.day):
                         matched_meteo = Am[j]
@@ -212,7 +216,8 @@ def fetch_and_save_owm_weather(db: Session, station_id: int) -> int:
 
         if not matched_meteo:
             for j in range(len(Am)):
-                if Am[j]["yy"] == tomorrow.year and Am[j]["mm"] == tomorrow.month and Am[j]["day"] == tomorrow.day:
+                if Am[j]["yy"] == target_date.year and Am[j]["mm"] == target_date.month and Am[j][
+                    "day"] == target_date.day:
                     matched_meteo = Am[j]
                     break
         if not matched_meteo and Am:
@@ -233,13 +238,11 @@ def fetch_and_save_owm_weather(db: Session, station_id: int) -> int:
         h_svetl = sun_data["h_svetl"]
         day_of_week = target_dt.isoweekday()
 
-
         existing = db.query(WeatherForecast).filter(
             WeatherForecast.station_id == station_id,
             WeatherForecast.source == "OpenWeatherMap",
             WeatherForecast.timestamp == target_dt
         ).first()
-
 
         if existing:
             existing.temperature = temp
@@ -274,6 +277,112 @@ def fetch_and_save_owm_weather(db: Session, station_id: int) -> int:
 
             db.add(weather_record)
 
+        saved_count += 1
+
+    db.commit()
+    return saved_count
+
+
+def fetch_and_save_archive_weather(db: Session, station_id: int, target_date: Optional[date] = None) -> int:
+    """
+    Завантажує погодинні фактичні (архівні/reanalysis) метеодані на обрану дату з Open-Meteo
+    та зберігає/оновлює їх у Neon PostgreSQL з міткою джерела 'Open-Meteo-Archive'.
+    """
+    station = db.query(Station).filter(Station.id == station_id).first()
+    if not station:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Сонячну станцію з ID {station_id} не знайдено."
+        )
+
+    if target_date is None:
+        target_date = (datetime.now(timezone.utc) - timedelta(days=1)).date()
+
+    params = {
+        "latitude": station.latitude,
+        "longitude": station.longitude,
+        "hourly": "temperature_2m,relative_humidity_2m,surface_pressure,cloud_cover,wind_speed_10m",
+        "wind_speed_unit": "ms",
+        "timezone": "UTC",
+        "start_date": target_date.isoformat(),
+        "end_date": target_date.isoformat()
+    }
+
+    data = None
+    try:
+        response = requests.get(OPEN_METEO_URL, params=params, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+    except Exception:
+        pass
+
+    if not data or "hourly" not in data or not data["hourly"].get("time"):
+        archive_url = "https://archive-api.open-meteo.com/v1/archive"
+        try:
+            response = requests.get(archive_url, params=params, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+        except requests.RequestException as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Помилка отримання фактичної погоди з Open-Meteo Archive: {str(e)}"
+            )
+
+    hourly_data = data.get("hourly", {})
+    timestamps = hourly_data.get("time", [])
+    temperatures = hourly_data.get("temperature_2m", [])
+    cloud_covers = hourly_data.get("cloud_cover", [])
+    pressures = hourly_data.get("surface_pressure", [])
+    humidities = hourly_data.get("relative_humidity_2m", [])
+    wind_speeds = hourly_data.get("wind_speed_10m", [])
+
+    saved_count = 0
+    for i in range(len(timestamps)):
+        dt_utc = datetime.fromisoformat(timestamps[i]).replace(tzinfo=timezone.utc)
+        sun_data = calculate_sun_position(station.latitude, station.longitude, dt_utc)
+        azimuth = sun_data["azimuth"]
+        elevation = sun_data["elevation"]
+        st_s = sun_data["st_s"]
+        h_svetl = sun_data["h_svetl"]
+        day_of_week = dt_utc.isoweekday()
+        ww = 0.0
+
+        existing = db.query(WeatherForecast).filter(
+            WeatherForecast.station_id == station_id,
+            WeatherForecast.source == "Open-Meteo-Archive",
+            WeatherForecast.timestamp == dt_utc
+        ).first()
+
+        if existing:
+            existing.temperature = temperatures[i]
+            existing.cloud_cover = cloud_covers[i]
+            existing.pressure = pressures[i]
+            existing.humidity = humidities[i]
+            existing.wind_speed = wind_speeds[i]
+            existing.st_s = st_s
+            existing.h_svetl = round(h_svetl, 6)
+            existing.azimuth = round(azimuth, 6)
+            existing.elevation = round(elevation, 6)
+            existing.day_of_week = day_of_week
+            existing.ww = ww
+        else:
+            weather_record = WeatherForecast(
+                station_id=station_id,
+                timestamp=dt_utc,
+                temperature=temperatures[i],
+                cloud_cover=cloud_covers[i],
+                pressure=pressures[i],
+                humidity=humidities[i],
+                wind_speed=wind_speeds[i],
+                source="Open-Meteo-Archive",
+                st_s=st_s,
+                h_svetl=round(h_svetl, 6),
+                azimuth=round(azimuth, 6),
+                elevation=round(elevation, 6),
+                day_of_week=day_of_week,
+                ww=ww
+            )
+            db.add(weather_record)
         saved_count += 1
 
     db.commit()
