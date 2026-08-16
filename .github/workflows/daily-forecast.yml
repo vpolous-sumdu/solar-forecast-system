@@ -1,0 +1,66 @@
+name: Daily Solar Generation Forecast Cron
+
+on:
+  schedule:
+    # 20:05 UTC відповідає 23:05 за київським часом
+    - cron: '5 20 * * *'
+  workflow_dispatch:
+    inputs:
+      weather_source:
+        description: 'Джерело погоди для прогнозу'
+        required: true
+        default: 'OpenWeatherMap'
+        type: choice
+        options:
+          - OpenWeatherMap
+          - Open-Meteo
+          - Open-Meteo-Archive
+      target_date:
+        description: 'Дата для розрахунку (YYYY-MM-DD, за замовчуванням завтра)'
+        required: false
+        type: string
+
+jobs:
+  run-forecast:
+    name: Execute Daily Forecast Pipeline
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Backend Forecast Cron Endpoint
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_API_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          WEATHER_SOURCE: ${{ github.event.inputs.weather_source || 'OpenWeatherMap' }}
+          TARGET_DATE: ${{ github.event.inputs.target_date || '' }}
+        run: |
+          echo "🚀 Запуск щоденного автоматичного прогнозування..."
+          echo "📡 Backend Target: $BACKEND_URL"
+          echo "☁️ Джерело погоди: $WEATHER_SOURCE"
+          
+          # Формуємо URL з Query-параметрами якщо передано дату
+          URL="$BACKEND_URL/api/v1/forecast/cron/daily-batch?weather_source=$WEATHER_SOURCE"
+          if [ -n "$TARGET_DATE" ]; then
+            URL="$URL&date=$TARGET_DATE"
+          fi
+          
+          echo "🌐 Виклик ендпоінта: $URL"
+          
+          # Робимо POST-запит з таймаутом до 180 секунд (дозволяє Render прокинутися)
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+            --max-time 180 \
+            -X POST "$URL" \
+            -H "X-Cron-Secret: $CRON_SECRET" \
+            -H "Content-Type: application/json")
+          
+          HTTP_BODY=$(echo "$RESPONSE" | sed -e '$d')
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n 1 | cut -d':' -f2)
+          
+          echo "📥 Відповідь сервера (HTTP $HTTP_STATUS):"
+          echo "$HTTP_BODY"
+          
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "✅ Щоденний прогноз успішно розраховано та збережено в Neon DB!"
+          else
+            echo "❌ Помилка виконання прогнозу (HTTP $HTTP_STATUS)"
+            exit 1
+          fi
