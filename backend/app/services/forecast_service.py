@@ -237,26 +237,42 @@ def run_batch_forecast_for_all_stations(
                 else:
                     fetch_and_save_owm_weather(db, s.id, target_date=target_date)
 
-                # 2. Розраховуємо прогноз нейромережею
-                gen_results = generate_power_forecast_for_station(
-                    db=db,
-                    station_id=s.id,
-                    target_date=target_date,
-                    weather_source=src,
-                    model_id=model_id
-                )
+                # 2. Визначаємо моделі: якщо model_id не задано — автоматично рахуємо для ВСІХ зареєстрованих моделей СЕС
+                if model_id:
+                    target_models = db.query(NeuralModel).filter(
+                        NeuralModel.id == model_id,
+                        NeuralModel.station_id == s.id
+                    ).all()
+                else:
+                    target_models = db.query(NeuralModel).filter(
+                        NeuralModel.station_id == s.id
+                    ).order_by(NeuralModel.id.asc()).all()
 
-                station_daily_kwh = sum(item["predicted_power_kw"] for item in gen_results)
-                src_kwh += station_daily_kwh
-                src_processed += 1
+                if not target_models:
+                    continue
 
-                src_details.append({
-                    "station_id": s.id,
-                    "station_name": s.name,
-                    "status": "success",
-                    "predicted_daily_kwh": round(station_daily_kwh, 2),
-                    "hourly_points": len(gen_results)
-                })
+                for m in target_models:
+                    gen_results = generate_power_forecast_for_station(
+                        db=db,
+                        station_id=s.id,
+                        target_date=target_date,
+                        weather_source=src,
+                        model_id=m.id
+                    )
+
+                    station_daily_kwh = sum(item["predicted_power_kw"] for item in gen_results)
+                    src_kwh += station_daily_kwh
+                    src_processed += 1
+
+                    src_details.append({
+                        "station_id": s.id,
+                        "station_name": s.name,
+                        "model_id": m.id,
+                        "model_name": m.name,
+                        "status": "success",
+                        "predicted_daily_kwh": round(station_daily_kwh, 2),
+                        "hourly_points": len(gen_results)
+                    })
             except Exception as e:
                 src_details.append({
                     "station_id": s.id,
