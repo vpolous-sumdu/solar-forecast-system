@@ -12,6 +12,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Wake up backend (Cold Start)
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_API_URL }}
+        run: |
+          echo "📡 Відправка запиту на прогрів сервера (Wake-up ping)..."
+          echo "🌐 Ping Target: $BACKEND_URL/"
+          curl -s -o /dev/null --max-time 60 "$BACKEND_URL/" || true
+          
+          echo "⏳ Очікуємо 2 хвилини (120 сек) для повного запуску контейнера на Render..."
+          sleep 120
+          
+          echo "🔍 Перевірка готовності сервера:"
+          PING_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$BACKEND_URL/" || echo "000")
+          echo "Статус сервера: HTTP $PING_STATUS"
+
       - name: Trigger Daily Forecast (Tomorrow, ALL sources)
         env:
           BACKEND_URL: ${{ secrets.BACKEND_API_URL }}
@@ -26,7 +41,7 @@ jobs:
           echo "🌐 Виклик: $URL"
           
           RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
-            --max-time 180 \
+            --max-time 300 \
             -X POST "$URL" \
             -H "X-Cron-Secret: $CRON_SECRET" \
             -H "Content-Type: application/json")
