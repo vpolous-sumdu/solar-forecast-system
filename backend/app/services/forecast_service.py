@@ -234,6 +234,9 @@ def run_batch_forecast_for_all_stations(
     total_predicted_kwh = 0.0
     details = []
 
+    start_dt = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0, tzinfo=timezone.utc)
+    end_dt = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59, tzinfo=timezone.utc)
+
     for src in sources_to_process:
         src_processed = 0
         src_kwh = 0.0
@@ -250,7 +253,14 @@ def run_batch_forecast_for_all_stations(
             try:
                 # 1. Завантажуємо погоду (для OWM/VC/Archive індивідуально, або як фолбек для Open-Meteo)
                 if src == "Open-Meteo":
-                    pass # Вже завантажено пакетом вище
+                    count_w = db.query(WeatherForecast).filter(
+                        WeatherForecast.station_id == s.id,
+                        WeatherForecast.source == "Open-Meteo",
+                        WeatherForecast.timestamp >= start_dt,
+                        WeatherForecast.timestamp <= end_dt
+                    ).count()
+                    if count_w < 24:
+                        fetch_and_save_weather(db, s.id, target_date=target_date)
                 elif src == "Open-Meteo-Archive":
                     fetch_and_save_archive_weather(db, s.id, target_date=target_date)
                 elif src == "Visual-Crossing":
@@ -259,6 +269,7 @@ def run_batch_forecast_for_all_stations(
                     fetch_and_save_owm_weather(db, s.id, target_date=target_date)
 
                 # 2. Визначаємо моделі: якщо model_id не задано — автоматично рахуємо для ВСІХ зареєстрованих моделей СЕС
+
 
                 if model_id:
                     target_models = db.query(NeuralModel).filter(
