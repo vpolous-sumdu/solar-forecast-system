@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, date, timezone, timedelta
 from typing import Optional
 
@@ -10,8 +11,13 @@ from app.models.weather import WeatherForecast
 from app.services.sun_service import calculate_sun_position
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
-OWM_APPID = "4d42571040d0367f79e4a83bfb696d4a"
+OWM_APPID = os.getenv("OPENWEATHERMAP_API_KEY", "")
 OWM_URL = "https://api.openweathermap.org/data/2.5/forecast"
+VISUAL_CROSSING_URL = "https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline"
+VISUAL_CROSSING_API_KEY = os.getenv("VISUAL_CROSSING_API_KEY", "")
+
+
+
 
 
 def fetch_and_save_weather(db: Session, station_id: int, target_date: Optional[date] = None) -> int:
@@ -140,9 +146,16 @@ def fetch_and_save_owm_weather(db: Session, station_id: int, target_date: Option
     if target_date is None:
         target_date = (datetime.now(timezone.utc) + timedelta(days=1)).date()
 
+    if not OWM_APPID:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="API ключ для OpenWeatherMap не налаштовано. Будь ласка, вкажіть OPENWEATHERMAP_API_KEY у .env або Environment Variables сервера."
+        )
+
     # Хардкоджені координати міста Суми (50.883333, 34.783333) 1-в-1 з еталоном (open_weather_map_unit.py)
     baseline_lat = 50.883333
     baseline_lon = 34.783333
+
 
     params = {
         "lat": baseline_lat,
@@ -387,3 +400,141 @@ def fetch_and_save_archive_weather(db: Session, station_id: int, target_date: Op
 
     db.commit()
     return saved_count
+
+
+def fetch_and_save_visual_crossing_weather(
+    db: Session,
+    station_id: int,
+    target_date: Optional[date] = None,
+    api_key: Optional[str] = None
+) -> int:
+    """
+    Завантажує погодинний прогноз погоди на обрану дату з Visual Crossing Timeline API
+    та зберігає/оновлює його у Neon PostgreSQL базі даних разом із сонячними та астрономічними полями.
+    """
+    station = db.query(Station).filter(Station.id == station_id).first()
+    if not station:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Сонячну станцію з ID {station_id} не знайдено."
+        )
+
+    if target_date is None:
+        target_date = (datetime.now(timezone.utc) + timedelta(days=1)).date()
+
+    key = api_key or VISUAL_CROSSING_API_KEY
+    if not key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="API ключ для Visual Crossing не налаштовано. Будь ласка, вкажіть VISUAL_CROSSING_API_KEY у .env або передайте api_key."
+        )
+
+    date_str = target_date.isoformat()
+    url = f"{VISUAL_CROSSING_URL}/{station.latitude},{station.longitude}/{date_str}"
+    params = {
+        "unitGroup": "metric",
+        "key": key,
+        "contentType": "json",
+        "include": "hours,days"
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=15)
+        if response.status_code == 401:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Недійсний або неавторизований API ключ Visual Crossing."
+            )
+        elif response.status_code == 429:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Вичерпано ліміт запитів Visual Crossing API."
+            )
+        response.raise_for_status()
+        data = response.json()
+    except HTTPException:
+        raise
+    except requests.RequestException as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Помилка підключення до сервісу погоди Visual Crossing: {str(e)}"
+        )
+
+    days_list = data.get("days", [])
+    if not days_list:
+        return 0
+
+    hourly_items = days_list[0].get("hours", [])
+    if not hourly_items:
+        return 0
+
+    saved_count = 0
+    for hour_item in hourly_items:
+        epoch = hour_item.get("datetimeEpoch")
+        if epoch:
+            dt_utc = datetime.fromtimestamp(epoch, tz=timezone.utc)
+        else:
+            time_parts = hour_item.get("datetime", "00:00:00").split(":")
+            h = int(time_parts[0]) if len(time_parts) > 0 else 0
+            dt_utc = datetime(target_date.year, target_date.month, target_date.day, h, 0, 0, tzinfo=timezone.utc)
+
+        # Розраховуємо сонячні та астрономічні поля 1-в-1 з unit2.py
+        sun_data = calculate_sun_position(station.latitude, station.longitude, dt_utc)
+        azimuth = sun_data["azimuth"]
+        elevation = sun_data["elevation"]
+        st_s = sun_data["st_s"]
+        h_svetl = sun_data["h_svetl"]
+        day_of_week = dt_utc.isoweekday()
+        ww = 0.0
+
+        temperature = float(hour_item.get("temp", 0.0))
+        cloud_cover = float(hour_item.get("cloudcover", 0.0))
+        pressure = float(hour_item.get("pressure", 1013.25))
+        humidity = float(hour_item.get("humidity", 50.0))
+        # Visual Crossing в unitGroup=metric повертає windspeed в км/год -> переводимо в м/с
+        wind_speed_raw = float(hour_item.get("windspeed", 0.0))
+        wind_speed = round(wind_speed_raw / 3.6, 2)
+
+        existing = db.query(WeatherForecast).filter(
+            WeatherForecast.station_id == station_id,
+            WeatherForecast.source == "Visual-Crossing",
+            WeatherForecast.timestamp == dt_utc
+        ).first()
+
+        if existing:
+            existing.temperature = temperature
+            existing.cloud_cover = cloud_cover
+            existing.pressure = pressure
+            existing.humidity = humidity
+            existing.wind_speed = wind_speed
+            existing.source = "Visual-Crossing"
+            existing.st_s = st_s
+            existing.h_svetl = round(h_svetl, 6)
+            existing.azimuth = round(azimuth, 6)
+            existing.elevation = round(elevation, 6)
+            existing.day_of_week = day_of_week
+            existing.ww = ww
+        else:
+            weather_record = WeatherForecast(
+                station_id=station_id,
+                timestamp=dt_utc,
+                temperature=temperature,
+                cloud_cover=cloud_cover,
+                pressure=pressure,
+                humidity=humidity,
+                wind_speed=wind_speed,
+                source="Visual-Crossing",
+                st_s=st_s,
+                h_svetl=round(h_svetl, 6),
+                azimuth=round(azimuth, 6),
+                elevation=round(elevation, 6),
+                day_of_week=day_of_week,
+                ww=ww
+            )
+            db.add(weather_record)
+
+        saved_count += 1
+
+    db.commit()
+    return saved_count
+

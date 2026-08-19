@@ -1,3 +1,4 @@
+import os
 import urllib.request
 import urllib.error
 from datetime import datetime, date, timezone
@@ -8,7 +9,9 @@ from fastapi import HTTPException, status
 from app.models.station import Station
 from app.models.actual_generation import ActualGeneration
 
-PVOUTPUT_KEY = "essolar"
+PVOUTPUT_KEY = os.getenv("PVOUTPUT_API_KEY", "")
+
+
 
 class TtmpRec:
     def __init__(self):

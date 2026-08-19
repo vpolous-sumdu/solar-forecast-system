@@ -13,3 +13,13 @@ services:
         sync: false
       - key: DIRECT_DATABASE_URL
         sync: false
+      - key: OPENWEATHERMAP_API_KEY
+        sync: false
+      - key: VISUAL_CROSSING_API_KEY
+        sync: false
+      - key: PVOUTPUT_API_KEY
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+
+

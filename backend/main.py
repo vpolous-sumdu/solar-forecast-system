@@ -39,13 +39,17 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+cors_origins_env = os.getenv("CORS_ORIGINS", "*")
+allowed_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=allowed_origins if allowed_origins else ["*"],
+    allow_credentials=False if allowed_origins == ["*"] else True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 app.include_router(stations_router, prefix="/api/v1")
 app.include_router(weather_router, prefix="/api/v1")

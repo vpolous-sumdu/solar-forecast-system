@@ -242,6 +242,8 @@ export class WeatherForecastComponent implements OnInit {
                 return;
             }
             this.fetchFreshArchiveWeather();
+        } else if (source === 'Visual-Crossing') {
+            this.fetchFreshVisualCrossingWeather();
         } else {
             this.fetchFreshWeather();
         }
@@ -310,6 +312,27 @@ export class WeatherForecastComponent implements OnInit {
         });
     }
 
+    fetchFreshVisualCrossingWeather(): void {
+        const stationId = this.selectedStationId();
+        if (!stationId) return;
+
+        this.fetching.set(true);
+        this.error.set(null);
+        const date = this.selectedDate();
+
+        this.weatherService.fetchFreshVisualCrossingWeather(stationId, date).subscribe({
+            next: () => {
+                this.fetching.set(false);
+                this.generationMap.set({});
+                this.loadWeather(stationId);
+            },
+            error: (err) => {
+                this.error.set(err.error?.detail || 'Помилка завантаження погоди з Visual Crossing');
+                this.fetching.set(false);
+            }
+        });
+    }
+
     generatePowerForecast(): void {
         const stationId = this.selectedStationId();
         if (!stationId) return;
@@ -331,7 +354,9 @@ export class WeatherForecastComponent implements OnInit {
                 ? this.weatherService.fetchFreshOpenWeatherMapWeather(stationId, date)
                 : (source === 'Open-Meteo-Archive')
                     ? this.weatherService.fetchFreshOpenMeteoArchiveWeather(stationId, date)
-                    : this.weatherService.fetchFreshOpenMeteoWeather(stationId, date);
+                    : (source === 'Visual-Crossing')
+                        ? this.weatherService.fetchFreshVisualCrossingWeather(stationId, date)
+                        : this.weatherService.fetchFreshOpenMeteoWeather(stationId, date);
 
             fetchObs.subscribe({
                 next: () => {
@@ -347,6 +372,7 @@ export class WeatherForecastComponent implements OnInit {
 
         this.executeGeneration(stationId, date, source);
     }
+
 
     private executeGeneration(stationId: number, date: string, source: string): void {
         const modelId = this.selectedModelId() || undefined;

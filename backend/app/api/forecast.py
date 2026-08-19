@@ -113,12 +113,14 @@ def cron_daily_batch_forecast(
     Спеціальний захищений ендпоінт для GitHub Actions / Vercel Cron.
     Автоматично розраховує погодинний прогноз генерації на наступний день для всіх 12 станцій для обох джерел погоди.
     """
-    expected_secret = os.getenv("CRON_SECRET")
-    if expected_secret and x_cron_secret != expected_secret:
+    expected_secret = os.getenv("CRON_SECRET", "")
+    if not expected_secret or not x_cron_secret or x_cron_secret != expected_secret:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Недійсний або відсутній X-Cron-Secret токен авторизації."
         )
+
+
 
     report = run_batch_forecast_for_all_stations(
         db=db,

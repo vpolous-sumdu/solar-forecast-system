@@ -6,7 +6,13 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.weather import WeatherForecast
 from app.schemas.weather import WeatherForecastResponse
-from app.services.weather_service import fetch_and_save_weather, fetch_and_save_owm_weather, fetch_and_save_archive_weather
+from app.services.weather_service import (
+    fetch_and_save_weather,
+    fetch_and_save_owm_weather,
+    fetch_and_save_archive_weather,
+    fetch_and_save_visual_crossing_weather
+)
+
 
 DbSessionDep = Annotated[Session, Depends(get_db)]
 
@@ -56,6 +62,22 @@ def fetch_openweathermap_weather(
         "status": "success",
         "message": f"Збережено/оновлено {saved_count} годинних записів погоди з OpenWeatherMap для станції #{station_id}{date_str}"
     }
+
+@router.post("/fetch-visual-crossing/{station_id}", status_code=status.HTTP_200_OK)
+def fetch_visual_crossing_weather(
+    station_id: int, 
+    db: DbSessionDep,
+    date_param: Optional[date] = Query(None, alias="date", description="Дата для завантаження погоди (YYYY-MM-DD)"),
+    api_key: Optional[str] = Query(None, alias="api_key", description="Опціональний API ключ Visual Crossing")
+):
+    """Завантажити свіжий прогноз погоди з Visual Crossing та зберегти у Neon DB"""
+    saved_count = fetch_and_save_visual_crossing_weather(db, station_id, target_date=date_param, api_key=api_key)
+    date_str = f" на дату {date_param.isoformat()}" if date_param else ""
+    return {
+        "status": "success",
+        "message": f"Збережено/оновлено {saved_count} годинних записів погоди з Visual Crossing для станції #{station_id}{date_str}"
+    }
+
 
 @router.get("/{station_id}", response_model=List[WeatherForecastResponse])
 def get_weather_forecast(

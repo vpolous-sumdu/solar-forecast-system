@@ -52,4 +52,21 @@ export class WeatherService {
             message: string
         }>(`/api/v1/weather/fetch-open-meteo-archive/${stationId}`, {}, {params});
     }
+
+    fetchFreshVisualCrossingWeather(stationId: number, date?: string, apiKey?: string): Observable<{
+        status: string;
+        message: string
+    }> {
+        let params = new HttpParams();
+        if (date) {
+            params = params.set('date', date);
+        }
+        if (apiKey) {
+            params = params.set('api_key', apiKey);
+        }
+        return this.http.post<{
+            status: string;
+            message: string
+        }>(`/api/v1/weather/fetch-visual-crossing/${stationId}`, {}, {params});
+    }
 }

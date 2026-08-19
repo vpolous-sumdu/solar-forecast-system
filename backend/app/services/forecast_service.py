@@ -194,7 +194,8 @@ def run_batch_forecast_for_all_stations(
     from app.services.weather_service import (
         fetch_and_save_weather,
         fetch_and_save_owm_weather,
-        fetch_and_save_archive_weather
+        fetch_and_save_archive_weather,
+        fetch_and_save_visual_crossing_weather
     )
 
     stations = db.query(Station).order_by(Station.id.asc()).all()
@@ -212,7 +213,7 @@ def run_batch_forecast_for_all_stations(
 
     # Визначаємо список джерел погоди для обробки
     if weather_source.upper() == "ALL":
-        sources_to_process = ["OpenWeatherMap", "Open-Meteo"]
+        sources_to_process = ["OpenWeatherMap", "Open-Meteo", "Visual-Crossing"]
     elif "," in weather_source:
         sources_to_process = [s.strip() for s in weather_source.split(",") if s.strip()]
     else:
@@ -234,8 +235,11 @@ def run_batch_forecast_for_all_stations(
                     fetch_and_save_weather(db, s.id, target_date=target_date)
                 elif src == "Open-Meteo-Archive":
                     fetch_and_save_archive_weather(db, s.id, target_date=target_date)
+                elif src == "Visual-Crossing":
+                    fetch_and_save_visual_crossing_weather(db, s.id, target_date=target_date)
                 else:
                     fetch_and_save_owm_weather(db, s.id, target_date=target_date)
+
 
                 # 2. Визначаємо моделі: якщо model_id не задано — автоматично рахуємо для ВСІХ зареєстрованих моделей СЕС
                 if model_id:

@@ -13,7 +13,9 @@ BASELINE_STATIONS = [
     "77589", "77590", "77591", "78440", "78441", "78444"
 ]
 
-PVOUTPUT_KEY = "essolar"
+PVOUTPUT_KEY = os.getenv("PVOUTPUT_API_KEY", "")
+
+
 
 def fetch_station_from_pvoutput(station_id: str) -> dict:
     """Отримує точні живі дані станції напряму з PVOutput API"""
