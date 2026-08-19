@@ -61,9 +61,18 @@ def fetch_and_save_weather(db: Session, station_id: int, target_date: Optional[d
     wind_speeds = hourly_data.get("wind_speed_10m", [])
 
     saved_count = 0
+    dt_list = [datetime.fromisoformat(ts).replace(tzinfo=timezone.utc) for ts in timestamps]
+    
+    existing_map = {
+        w.timestamp: w for w in db.query(WeatherForecast).filter(
+            WeatherForecast.station_id == station_id,
+            WeatherForecast.source == "Open-Meteo",
+            WeatherForecast.timestamp.in_(dt_list)
+        ).all()
+    }
 
     for i in range(len(timestamps)):
-        dt_utc = datetime.fromisoformat(timestamps[i]).replace(tzinfo=timezone.utc)
+        dt_utc = dt_list[i]
 
         # Розраховуємо сонячні та астрономічні поля 1-в-1 з unit2.py
         sun_data = calculate_sun_position(station.latitude, station.longitude, dt_utc)
@@ -74,11 +83,7 @@ def fetch_and_save_weather(db: Session, station_id: int, target_date: Optional[d
         day_of_week = dt_utc.isoweekday()
         ww = 0.0
 
-        existing = db.query(WeatherForecast).filter(
-            WeatherForecast.station_id == station_id,
-            WeatherForecast.source == "Open-Meteo",
-            WeatherForecast.timestamp == dt_utc
-        ).first()
+        existing = existing_map.get(dt_utc)
 
         if existing:
             existing.temperature = temperatures[i]
@@ -201,9 +206,18 @@ def fetch_and_save_owm_weather(db: Session, station_id: int, target_date: Option
 
     # Крок 2: Формування 24-годинного масиву lm на обрану дату (1-в-1 з AddMeteoData у unit2.py)
     saved_count = 0
+    all_target_dts = [datetime(target_date.year, target_date.month, target_date.day, hour, 0, 0, tzinfo=timezone.utc) for hour in range(24)]
+
+    existing_map = {
+        w.timestamp: w for w in db.query(WeatherForecast).filter(
+            WeatherForecast.station_id == station_id,
+            WeatherForecast.source == "OpenWeatherMap",
+            WeatherForecast.timestamp.in_(all_target_dts)
+        ).all()
+    }
 
     for hour in range(24):
-        target_dt = datetime(target_date.year, target_date.month, target_date.day, hour, 0, 0, tzinfo=timezone.utc)
+        target_dt = all_target_dts[hour]
         hh_in = float(hour)
         hh = float(hour + 1)
 
@@ -247,11 +261,7 @@ def fetch_and_save_owm_weather(db: Session, station_id: int, target_date: Option
         h_svetl = sun_data["h_svetl"]
         day_of_week = target_dt.isoweekday()
 
-        existing = db.query(WeatherForecast).filter(
-            WeatherForecast.station_id == station_id,
-            WeatherForecast.source == "OpenWeatherMap",
-            WeatherForecast.timestamp == target_dt
-        ).first()
+        existing = existing_map.get(target_dt)
 
         if existing:
             existing.temperature = temp
@@ -341,16 +351,25 @@ def fetch_and_save_archive_weather(db: Session, station_id: int, target_date: Op
     hourly_data = data.get("hourly", {})
     timestamps = hourly_data.get("time", [])
 
-
     temperatures = hourly_data.get("temperature_2m", [])
     cloud_covers = hourly_data.get("cloud_cover", [])
     pressures = hourly_data.get("surface_pressure", [])
     humidities = hourly_data.get("relative_humidity_2m", [])
     wind_speeds = hourly_data.get("wind_speed_10m", [])
 
+    dt_list = [datetime.fromisoformat(ts).replace(tzinfo=timezone.utc) for ts in timestamps]
+    
+    existing_map = {
+        w.timestamp: w for w in db.query(WeatherForecast).filter(
+            WeatherForecast.station_id == station_id,
+            WeatherForecast.source == "Open-Meteo-Archive",
+            WeatherForecast.timestamp.in_(dt_list)
+        ).all()
+    }
+
     saved_count = 0
     for i in range(len(timestamps)):
-        dt_utc = datetime.fromisoformat(timestamps[i]).replace(tzinfo=timezone.utc)
+        dt_utc = dt_list[i]
         sun_data = calculate_sun_position(station.latitude, station.longitude, dt_utc)
         azimuth = sun_data["azimuth"]
         elevation = sun_data["elevation"]
@@ -359,11 +378,7 @@ def fetch_and_save_archive_weather(db: Session, station_id: int, target_date: Op
         day_of_week = dt_utc.isoweekday()
         ww = 0.0
 
-        existing = db.query(WeatherForecast).filter(
-            WeatherForecast.station_id == station_id,
-            WeatherForecast.source == "Open-Meteo-Archive",
-            WeatherForecast.timestamp == dt_utc
-        ).first()
+        existing = existing_map.get(dt_utc)
 
         if existing:
             existing.temperature = temperatures[i]
@@ -467,7 +482,8 @@ def fetch_and_save_visual_crossing_weather(
     if not hourly_items:
         return 0
 
-    saved_count = 0
+    # Попередньо розраховуємо часові мітки для bulk lookup
+    parsed_hours = []
     for hour_item in hourly_items:
         epoch = hour_item.get("datetimeEpoch")
         if epoch:
@@ -476,7 +492,19 @@ def fetch_and_save_visual_crossing_weather(
             time_parts = hour_item.get("datetime", "00:00:00").split(":")
             h = int(time_parts[0]) if len(time_parts) > 0 else 0
             dt_utc = datetime(target_date.year, target_date.month, target_date.day, h, 0, 0, tzinfo=timezone.utc)
+        parsed_hours.append((dt_utc, hour_item))
 
+    vc_dt_list = [item[0] for item in parsed_hours]
+    existing_map = {
+        w.timestamp: w for w in db.query(WeatherForecast).filter(
+            WeatherForecast.station_id == station_id,
+            WeatherForecast.source == "Visual-Crossing",
+            WeatherForecast.timestamp.in_(vc_dt_list)
+        ).all()
+    }
+
+    saved_count = 0
+    for dt_utc, hour_item in parsed_hours:
         # Розраховуємо сонячні та астрономічні поля 1-в-1 з unit2.py
         sun_data = calculate_sun_position(station.latitude, station.longitude, dt_utc)
         azimuth = sun_data["azimuth"]
@@ -494,11 +522,7 @@ def fetch_and_save_visual_crossing_weather(
         wind_speed_raw = float(hour_item.get("windspeed", 0.0))
         wind_speed = round(wind_speed_raw / 3.6, 2)
 
-        existing = db.query(WeatherForecast).filter(
-            WeatherForecast.station_id == station_id,
-            WeatherForecast.source == "Visual-Crossing",
-            WeatherForecast.timestamp == dt_utc
-        ).first()
+        existing = existing_map.get(dt_utc)
 
         if existing:
             existing.temperature = temperature

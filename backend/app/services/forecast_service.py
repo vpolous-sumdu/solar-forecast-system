@@ -86,6 +86,16 @@ def generate_power_forecast_for_station(
     model_code = getattr(model_record, "code", "baseline") or "baseline"
     raw_predictions = execute_model_prediction(model_code, mas_in, weights_dict)
 
+    weather_timestamps = [w.timestamp for w in weather_records]
+    existing_gen_map = {
+        g.timestamp: g for g in db.query(GenerationForecast).filter(
+            GenerationForecast.station_id == station_id,
+            GenerationForecast.weather_source == weather_source,
+            GenerationForecast.model_id == model_record.id,
+            GenerationForecast.timestamp.in_(weather_timestamps)
+        ).all()
+    }
+
     results = []
     for i, w in enumerate(weather_records):
         val = raw_predictions[i]
@@ -96,12 +106,7 @@ def generate_power_forecast_for_station(
         predicted_kw = round(float(val / 1000.0), 4)
 
         # Зберігаємо прогноз із чіткою прив'язкою до weather_source та model_id
-        existing_gen = db.query(GenerationForecast).filter(
-            GenerationForecast.station_id == station_id,
-            GenerationForecast.weather_source == weather_source,
-            GenerationForecast.model_id == model_record.id,
-            GenerationForecast.timestamp == w.timestamp
-        ).first()
+        existing_gen = existing_gen_map.get(w.timestamp)
 
         if existing_gen:
             existing_gen.predicted_power_watts = predicted_watts
@@ -283,6 +288,7 @@ def run_batch_forecast_for_all_stations(
                         "hourly_points": len(gen_results)
                     })
             except Exception as e:
+                db.rollback()
                 src_details.append({
                     "station_id": s.id,
                     "station_name": s.name,
