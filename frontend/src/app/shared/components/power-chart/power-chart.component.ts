@@ -1,11 +1,12 @@
 import {
     Component,
     ElementRef,
-    ViewChild,
+    viewChild,
     input,
     effect,
     OnDestroy,
-    afterNextRender
+    afterNextRender,
+    ChangeDetectionStrategy
 } from '@angular/core';
 import {Chart, registerables} from 'chart.js';
 import {ChartSeries} from '../../../core/models/chart.model';
@@ -17,11 +18,12 @@ export type {ChartSeries};
 @Component({
     selector: 'app-power-chart',
     standalone: true,
+    changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './power-chart.component.html',
     styleUrl: './power-chart.component.css'
 })
 export class PowerChartComponent implements OnDestroy {
-    @ViewChild('chartCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
+    canvasRef = viewChild<ElementRef<HTMLCanvasElement>>('chartCanvas');
 
     labels = input.required<string[]>();
     series = input.required<ChartSeries[]>();
@@ -61,15 +63,15 @@ export class PowerChartComponent implements OnDestroy {
     }
 
     private updateChart(): void {
-        if (!this.canvasRef || !this.canvasRef.nativeElement) return;
+        const canvas = this.canvasRef()?.nativeElement;
+        if (!canvas) return;
+
         const lbls = this.labels();
         const srs = this.series();
         if (!lbls || lbls.length === 0 || !srs || srs.length === 0) {
             this.destroyChart();
             return;
         }
-
-        this.destroyChart();
 
         const datasets = srs.map(s => ({
             label: s.name,
@@ -84,7 +86,14 @@ export class PowerChartComponent implements OnDestroy {
             pointHoverRadius: 6
         }));
 
-        this.chart = new Chart(this.canvasRef.nativeElement, {
+        if (this.chart) {
+            this.chart.data.labels = lbls;
+            this.chart.data.datasets = datasets;
+            this.chart.update('none');
+            return;
+        }
+
+        this.chart = new Chart(canvas, {
             type: 'line',
             data: {
                 labels: lbls,
@@ -103,7 +112,7 @@ export class PowerChartComponent implements OnDestroy {
                         mode: 'index',
                         intersect: false,
                         callbacks: {
-                            label: (ctx) => `${ctx.dataset.label}: ${ctx.raw} кВт (${Math.round(Number(ctx.raw) * 1000)} Вт)`
+                            label: (ctx) => `${ctx.dataset.label}: ${ctx.raw} кВт`
                         }
                     }
                 },
@@ -122,3 +131,4 @@ export class PowerChartComponent implements OnDestroy {
         });
     }
 }
+

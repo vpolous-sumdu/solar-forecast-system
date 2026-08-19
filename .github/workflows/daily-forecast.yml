@@ -35,7 +35,7 @@ jobs:
           echo "🚀 Запуск щоденного автоматичного прогнозування на завтра..."
           echo "📡 Backend Target: $BACKEND_URL"
           
-          # Запит до захищеного cron ендпоінта (дата = завтра, джерела = OpenWeatherMap + Open-Meteo)
+          # Запит до захищеного cron ендпоінта (дата = завтра, джерела = OpenWeatherMap + Open-Meteo + Visual-Crossing)
           URL="$BACKEND_URL/api/v1/forecast/cron/daily-batch?weather_source=ALL"
           
           echo "🌐 Виклик: $URL"
@@ -53,8 +53,9 @@ jobs:
           echo "$HTTP_BODY"
           
           if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
-            echo "✅ Прогноз на завтра успішно розраховано для обох джерел (OWM + Open-Meteo) і збережено в Neon DB!"
+            echo "✅ Прогноз на завтра успішно розраховано для всіх 3 джерел (OWM + Open-Meteo + Visual-Crossing) і збережено в Neon DB!"
           else
+
             echo "❌ Помилка виконання прогнозу (HTTP $HTTP_STATUS)"
             exit 1
           fi

@@ -27,26 +27,6 @@
             </div>
 
             <div class="selector-group">
-                <label for="weatherProviderSelect" class="select-label">Джерело погоди:</label>
-                <select id="weatherProviderSelect" class="station-select" [value]="selectedWeatherSource()" (change)="onWeatherSourceChange($event)">
-                    <option value="OpenWeatherMap" [selected]="selectedWeatherSource() === 'OpenWeatherMap'">
-                        OpenWeatherMap (Еталонні Суми)
-                    </option>
-                    <option value="Open-Meteo" [selected]="selectedWeatherSource() === 'Open-Meteo'">Open-Meteo (GPS
-                        СЕС)
-                    </option>
-                    <option value="Visual-Crossing" [selected]="selectedWeatherSource() === 'Visual-Crossing'">
-                        Visual Crossing (GPS СЕС)
-                    </option>
-                    <option value="Open-Meteo-Archive" [selected]="selectedWeatherSource() === 'Open-Meteo-Archive'"
-                            [disabled]="isArchiveDisabled()">
-                        Open-Meteo (Реальна фактична
-                        погода){{ isArchiveDisabled() ? ' — недоступно (день ще не минув)' : '' }}
-                    </option>
-                </select>
-            </div>
-
-            <div class="selector-group">
                 <label for="modelSelect" class="select-label">Модель нейромережі:</label>
                 @if (models().length === 0 && (loading() || loadingModels())) {
                     <div class="skeleton-box select-skeleton"></div>
@@ -64,116 +44,302 @@
                 }
             </div>
 
+            <!-- Інтерактивні чекбокси вибору джерел прогнозу -->
+            <div class="selector-group sources-checkbox-group">
+                <span class="select-label">Джерела прогнозу:</span>
+                <div class="checkboxes-wrapper">
+                    @for (opt of weatherSourceOptions; track opt.id) {
+                        <label class="source-checkbox-label"
+                               [class.disabled-label]="isSourceDisabled(opt.id)"
+                               [attr.title]="isSourceDisabled(opt.id) ? 'Доступно тільки для минулих дат (архів)' : ''">
+                            <input
+                                    type="checkbox"
+                                    class="source-checkbox"
+                                    [checked]="isSourceSelected(opt.id)"
+                                    [disabled]="isSourceDisabled(opt.id)"
+                                    (change)="toggleSource(opt.id)"
+                            />
+                            <span>{{ opt.label }}</span>
+                            @if (isSourceDisabled(opt.id)) {
+                                <span class="disabled-tag">(архів)</span>
+                            }
+                        </label>
+                    }
+                </div>
+            </div>
+
+
             <div class="button-group">
-                <button class="btn btn-secondary" [disabled]="fetching() || fetchingOWM() || loading()"
-                        (click)="fetchSelectedWeather()">
-                    @if (fetching() || fetchingOWM()) {
+                <button class="btn btn-secondary"
+                        [disabled]="fetching() || loading() || selectedSources().length === 0 || isWeatherComplete()"
+                        (click)="fetchSelectedWeather(false)">
+                    @if (fetching()) {
                         <span class="spinner spinner-sm" style="vertical-align: middle; margin-right: 6px;"></span>
-                        Оновлення...
+                        Завантаження...
                     } @else {
-                        Завантажити погоду
+                        {{ weatherButtonLabel() }}
                     }
                 </button>
 
-                <button class="btn btn-primary" [disabled]="generating() || forecasts().length === 0"
-                        (click)="generatePowerForecast()">
+                @if (isWeatherComplete() && selectedSources().length > 0 && hourlyTimestamps().length > 0) {
+                    <button class="btn btn-secondary btn-recalc"
+                            [disabled]="fetching() || loading()"
+                            (click)="fetchSelectedWeather(true)"
+                            title="Примусово перезавантажити свіжу погоду з API для всіх вибраних джерел">
+                        Оновити погоду
+                    </button>
+                }
+
+                <button class="btn btn-primary"
+                        [disabled]="generating() || hourlyTimestamps().length === 0 || selectedSources().length === 0 || isGenerationComplete()"
+                        (click)="generatePowerForecast(false)">
                     @if (generating()) {
                         <span class="spinner spinner-sm"
                               style="vertical-align: middle; margin-right: 6px; border-top-color: #ffffff; border-color: rgba(255,255,255,0.3);"></span>
                         Розрахунок...
                     } @else {
-                        Сформувати прогноз генерації
+                        {{ generationButtonLabel() }}
                     }
                 </button>
+
+                @if (isGenerationComplete() && selectedSources().length > 0 && hourlyTimestamps().length > 0) {
+                    <button class="btn btn-secondary btn-recalc"
+                            [disabled]="generating() || loading()"
+                            (click)="generatePowerForecast(true)"
+                            title="Примусово перерахувати прогноз генерації для всіх вибраних джерел">
+                        Перерахувати
+                    </button>
+                }
             </div>
+
         </div>
+
+
 
         @if (error()) {
             <div class="status-error">Помилка: {{ error() }}</div>
         }
 
-        @if (chartLabels().length > 0 && chartSeries().length > 0) {
+        @if (selectedSources().length === 0) {
+            <div class="empty-state select-prompt">
+                Оберіть хоча б одне джерело прогнозу (чекбокси вище) для перегляду графіка та метеотаблиці.
+            </div>
+        } @else if (chartLabels().length > 0 && chartSeries().length > 0) {
             <app-power-chart
                     [labels]="chartLabels()"
                     [series]="chartSeries()"
-                    [loading]="loading() || generating() || fetching() || fetchingOWM() || loadingGen()"
+                    [loading]="loading() || generating() || fetching() || loadingGen()"
             ></app-power-chart>
         }
 
+        @if (selectedSources().length > 0) {
+            <div class="table-wrapper">
+                <table class="weather-table">
+                    @if (availableSourcesWithData().length > 1) {
+                        <!-- Багатовимірне порівняння кількох джерел (Multi-Source Comparison) -->
+                        <thead>
+                        <tr class="header-main-row">
+                            <th rowspan="2" class="th-time">Час (UTC)</th>
+                            @for (src of availableSourcesWithData(); track src) {
+                                <th colspan="3" class="header-source-group">
+                                    {{ src }}
+                                </th>
+                            }
 
-
-        <div class="table-wrapper">
-            <table class="weather-table">
-                <thead>
-                <tr>
-                    <th>Дата та час (UTC)</th>
-                    <th>Джерело погоди</th>
-                    <th>Прогноз генерації</th>
-                    <th>Ніч/Сут/День (st_s)</th>
-                    <th>Температура (T)</th>
-                    <th>Хмарність (Nh %)</th>
-                    <th>Тиск (p)</th>
-                    <th>Вологість (U %)</th>
-                    <th>Вітер (Ff)</th>
-                    <th>h_світ</th>
-                    <th>Азимут сонця</th>
-                    <th>Висота сонця (Hsun)</th>
-                    <th>Явища (WW)</th>
-                </tr>
-
-                </thead>
-                <tbody>
-                    @if (loading()) {
-                        @for (i of [1, 2, 3, 4, 5, 6]; track i) {
-                            <tr>
-                                <td>
-                                    <div class="skeleton-box col-time"></div>
-                                </td>
-                                @for (j of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; track j) {
-                                    <td>
-                                        <div class="skeleton-box col-val"></div>
-                                    </td>
-                                }
-                            </tr>
-                        }
-                    } @else if (forecasts().length === 0) {
-                        <tr>
-                            <td colspan="13" class="empty-state">
-                                Немає збереженого прогнозу погоди для цієї станції. Оберіть джерело та натисніть
-                                "Завантажити погоду".
-                            </td>
+                            <th colspan="4" class="header-astro-group">Геометрія сонця (спільна)</th>
                         </tr>
+                        <tr class="header-sub-row">
+                            @for (src of availableSourcesWithData(); track src) {
+                                <th class="sub-th">Потужність</th>
+                                <th class="sub-th">Хмарність (Nh)</th>
+                                <th class="sub-th">Температура (T)</th>
+                            }
+                            <th class="sub-th">Стан (st_s)</th>
+                            <th class="sub-th">h_світ</th>
+                            <th class="sub-th">Висота (Hsun)</th>
+                            <th class="sub-th">Азимут</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                            @if (loading()) {
+                                @for (i of [1, 2, 3, 4, 5, 6]; track i) {
+                                    <tr>
+                                        <td>
+                                            <div class="skeleton-box col-time"></div>
+                                        </td>
+                                        @for (j of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; track j) {
+                                            <td>
+                                                <div class="skeleton-box col-val"></div>
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            } @else if (hourlyTimestamps().length === 0) {
+                                <tr>
+                                    <td [attr.colspan]="1 + availableSourcesWithData().length * 3 + 4"
+                                        class="empty-state">
+                                        Немає збереженого прогнозу погоди для цієї станції на вибрану дату. Натисніть
+                                        "Завантажити погоду".
+                                    </td>
+                                </tr>
+                            } @else {
+                                @for (iso of hourlyTimestamps(); track iso) {
+                                    <tr>
+                                        <td class="time-cell">{{ getTimeIntervalLabel(iso) }}</td>
+                                        @for (src of availableSourcesWithData(); track src) {
+                                            <td>
+                                                @if (isSourceGenerating(src)) {
+                                                    <div class="skeleton-box col-val"></div>
+                                                } @else if (getGenerationForSourceByIso(iso, src)) {
+                                                    <span class="badge-power" [ngClass]="getSourceBadgeClass(src)">
+                                                        {{ getGenerationForSourceByIso(iso, src)?.predicted_power_kw }}
+                                                        кВт
+                                                    </span>
+                                                } @else {
+                                                    <span class="text-muted">—</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (isSourceFetching(src)) {
+                                                    <div class="skeleton-box col-val"></div>
+                                                } @else if (getWeatherForSource(iso, src)) {
+                                                    <span>{{ getWeatherForSource(iso, src)?.cloud_cover }} %</span>
+                                                } @else {
+                                                    <span class="text-muted">—</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (isSourceFetching(src)) {
+                                                    <div class="skeleton-box col-val"></div>
+                                                } @else if (getWeatherForSource(iso, src)) {
+                                                    <span class="val-temp">{{ getWeatherForSource(iso, src)?.temperature }}
+                                                        °C</span>
+                                                } @else {
+                                                    <span class="text-muted">—</span>
+                                                }
+                                            </td>
+                                        }
+                                        <td>{{ getAstroForTimestamp(iso)?.st_s }}</td>
+                                        <td>{{ getAstroForTimestamp(iso)?.h_svetl }}</td>
+                                        <td>{{ getAstroForTimestamp(iso)?.elevation }}°</td>
+                                        <td>{{ getAstroForTimestamp(iso)?.azimuth }}°</td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
                     } @else {
-                        @for (w of forecasts(); track w.id; let idx = $index) {
-                            <tr>
-                                <td class="time-cell">{{ w.timestamp | date:'dd.MM.yyyy HH:mm':'UTC' }}</td>
-                                <td><strong>{{ w.source }}</strong></td>
-                                <td>
-                                    @if (generating() || loadingGen()) {
-                                        <div class="skeleton-box col-val"></div>
-                                    } @else if (getGenerationForItem(w)) {
-                                        <span class="badge-power">{{ getGenerationForItem(w)?.predicted_power_kw }} кВт ({{ getGenerationForItem(w)?.predicted_power_watts }}
-                                            Вт)</span>
-                                    } @else {
-                                        <span class="text-muted">—</span>
-                                    }
-                                </td>
+                        <!-- Одиночне джерело з усіма детальними метеопараметрами -->
+                        <thead>
+                        <tr>
+                            <th>Час (UTC)</th>
+                            @for (src of availableSourcesWithData(); track src) {
+                                <th>Прогноз потужності ({{ src }})</th>
+                            }
+                            <th>Стан (st_s)</th>
+                            <th>Температура (T)</th>
+                            <th>Хмарність (Nh %)</th>
+                            <th>Тиск (p)</th>
+                            <th>Вологість (U %)</th>
+                            <th>Вітер (Ff)</th>
+                            <th>h_світ</th>
+                            <th>Азимут</th>
+                            <th>Висота (Hsun)</th>
+                            <th>Явища (WW)</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                            @if (loading()) {
+                                @for (i of [1, 2, 3, 4, 5, 6]; track i) {
+                                    <tr>
+                                        <td>
+                                            <div class="skeleton-box col-time"></div>
+                                        </td>
+                                        @for (j of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; track j) {
+                                            <td>
+                                                <div class="skeleton-box col-val"></div>
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            } @else if (hourlyTimestamps().length === 0) {
+                                <tr>
+                                    <td colspan="12" class="empty-state">
+                                        Немає збереженого прогнозу погоди для цієї станції на вибрану дату. Натисніть
+                                        "Завантажити погоду".
+                                    </td>
+                                </tr>
+                            } @else {
+                                @for (iso of hourlyTimestamps(); track iso) {
+                                    @let w = getWeatherForSource(iso, availableSourcesWithData()[0]);
+                                    <tr>
+                                        <td class="time-cell">{{ getTimeIntervalLabel(iso) }}</td>
+                                        @for (src of availableSourcesWithData(); track src) {
+                                            <td>
+                                                @if (isSourceGenerating(src)) {
+                                                    <div class="skeleton-box col-val"></div>
+                                                } @else if (getGenerationForSourceByIso(iso, src)) {
+                                                    <span class="badge-power" [ngClass]="getSourceBadgeClass(src)">
+                                                        {{ getGenerationForSourceByIso(iso, src)?.predicted_power_kw }}
+                                                        кВт
+                                                    </span>
+                                                } @else {
+                                                    <span class="text-muted">—</span>
+                                                }
+                                            </td>
+                                        }
 
-                                <td>{{ w.st_s }}</td>
-                                <td>{{ w.temperature }} °C</td>
-                                <td>{{ w.cloud_cover }} %</td>
-                                <td>{{ w.pressure }} гПа</td>
-                                <td>{{ w.humidity }} %</td>
-                                <td>{{ w.wind_speed }} м/с</td>
-                                <td>{{ w.h_svetl }}</td>
-                                <td>{{ w.azimuth }}°</td>
-                                <td>{{ w.elevation }}°</td>
-                                <td>{{ w.ww }}</td>
-                            </tr>
-                        }
+                                        <td>{{ w?.st_s ?? getAstroForTimestamp(iso)?.st_s }}</td>
+                                        <td>
+                                            @if (isSourceFetching(availableSourcesWithData()[0])) {
+                                                <div class="skeleton-box col-val"></div>
+                                            } @else {
+                                                {{ w?.temperature ?? '—' }} °C
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (isSourceFetching(availableSourcesWithData()[0])) {
+                                                <div class="skeleton-box col-val"></div>
+                                            } @else {
+                                                {{ w?.cloud_cover ?? '—' }} %
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (isSourceFetching(availableSourcesWithData()[0])) {
+                                                <div class="skeleton-box col-val"></div>
+                                            } @else {
+                                                {{ w?.pressure ?? '—' }} гПа
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (isSourceFetching(availableSourcesWithData()[0])) {
+                                                <div class="skeleton-box col-val"></div>
+                                            } @else {
+                                                {{ w?.humidity ?? '—' }} %
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (isSourceFetching(availableSourcesWithData()[0])) {
+                                                <div class="skeleton-box col-val"></div>
+                                            } @else {
+                                                {{ w?.wind_speed ?? '—' }} м/с
+                                            }
+                                        </td>
+                                        <td>{{ w?.h_svetl ?? getAstroForTimestamp(iso)?.h_svetl }}</td>
+                                        <td>{{ w?.azimuth ?? getAstroForTimestamp(iso)?.azimuth }}°</td>
+                                        <td>{{ w?.elevation ?? getAstroForTimestamp(iso)?.elevation }}°</td>
+                                        <td>{{ w?.ww ?? 0 }}</td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+
+
                     }
-                </tbody>
-            </table>
-        </div>
+                </table>
+            </div>
+        }
+
     </div>
 </div>
+
+

@@ -136,9 +136,10 @@ def get_saved_forecast_for_station(
         db: Session,
         station_id: int,
         target_date: Optional[date] = None,
-        weather_source: Optional[str] = None
+        weather_source: Optional[str] = None,
+        model_id: Optional[int] = None
 ) -> List[dict]:
-    """Отримує збережений прогноз генерації з фільтром по даті та джерелом прогнозу погоди"""
+    """Отримує збережений прогноз генерації з фільтром по даті, джерелу прогнозу погоди та моделі"""
     query = db.query(GenerationForecast, WeatherForecast).join(
         WeatherForecast,
         (GenerationForecast.station_id == WeatherForecast.station_id) &
@@ -156,10 +157,13 @@ def get_saved_forecast_for_station(
             GenerationForecast.timestamp <= end_dt
         )
 
-    if weather_source:
+    if weather_source and weather_source.upper() != "ALL":
         query = query.filter(GenerationForecast.weather_source == weather_source)
 
-    saved_records = query.order_by(GenerationForecast.timestamp.asc()).all()
+    if model_id:
+        query = query.filter(GenerationForecast.model_id == model_id)
+
+    saved_records = query.order_by(GenerationForecast.timestamp.asc(), GenerationForecast.weather_source.asc()).all()
 
     results = []
     for gen, w in saved_records:
@@ -174,6 +178,7 @@ def get_saved_forecast_for_station(
             "model_id": gen.model_id
         })
     return results
+
 
 
 def run_batch_forecast_for_all_stations(

@@ -29,7 +29,7 @@ export class GenerationService {
     getSavedForecast(
         stationId: number,
         date?: string,
-        weatherSource: string = 'OpenWeatherMap',
+        weatherSource: string = 'ALL',
         modelId?: number
     ): Observable<GenerationForecastResponse> {
         let params = new HttpParams().set('weather_source', weatherSource);

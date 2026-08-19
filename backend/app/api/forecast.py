@@ -20,13 +20,14 @@ router = APIRouter(
     tags=["Прогноз Генерації (Forecast)"]
 )
 
+
 @router.get("/models/{station_id}", status_code=status.HTTP_200_OK)
 def get_station_neural_models(station_id: int, db: DbSessionDep):
     """Отримати список доступних нейромережевих моделей для станції з бази даних Neon"""
     models = db.query(NeuralModel).filter(
         NeuralModel.station_id == station_id
     ).order_by(NeuralModel.id.asc()).all()
-    
+
     return [
         {
             "id": m.id,
@@ -39,16 +40,23 @@ def get_station_neural_models(station_id: int, db: DbSessionDep):
     ]
 
 
-
 @router.get("/{station_id}", status_code=status.HTTP_200_OK)
 def get_forecast(
         station_id: int,
         db: DbSessionDep,
-        weather_source: str = "OpenWeatherMap",
+        weather_source: Optional[str] = Query("ALL",
+                                              description="Джерело погоди (ALL / OpenWeatherMap / Open-Meteo / Visual-Crossing)"),
+        model_id: Optional[int] = Query(None, description="ID моделі нейромережі"),
         date_param: Optional[date] = Query(None, alias="date", description="Фільтр по даті (YYYY-MM-DD)")
 ):
-    """Отримати збережений прогноз генерації з БД Neon для вказаного джерела погоди та дати"""
-    results = get_saved_forecast_for_station(db, station_id, target_date=date_param, weather_source=weather_source)
+    """Отримати збережений прогноз генерації з БД Neon для вказаного джерела погоди, дати та моделі"""
+    results = get_saved_forecast_for_station(
+        db,
+        station_id,
+        target_date=date_param,
+        weather_source=weather_source,
+        model_id=model_id
+    )
     return {
         "status": "success",
         "station_id": station_id,
@@ -119,8 +127,6 @@ def cron_daily_batch_forecast(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Недійсний або відсутній X-Cron-Secret токен авторизації."
         )
-
-
 
     report = run_batch_forecast_for_all_stations(
         db=db,

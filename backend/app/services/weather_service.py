@@ -17,9 +17,6 @@ VISUAL_CROSSING_URL = "https://weather.visualcrossing.com/VisualCrossingWebServi
 VISUAL_CROSSING_API_KEY = os.getenv("VISUAL_CROSSING_API_KEY", "")
 
 
-
-
-
 def fetch_and_save_weather(db: Session, station_id: int, target_date: Optional[date] = None) -> int:
     """
     Завантажує погодинний прогноз погоди на обрану дату (або завтра за замовчуванням) з Open-Meteo
@@ -155,7 +152,6 @@ def fetch_and_save_owm_weather(db: Session, station_id: int, target_date: Option
     # Хардкоджені координати міста Суми (50.883333, 34.783333) 1-в-1 з еталоном (open_weather_map_unit.py)
     baseline_lat = 50.883333
     baseline_lon = 34.783333
-
 
     params = {
         "lat": baseline_lat,
@@ -321,28 +317,31 @@ def fetch_and_save_archive_weather(db: Session, station_id: int, target_date: Op
         "end_date": target_date.isoformat()
     }
 
-    data = None
-    try:
-        response = requests.get(OPEN_METEO_URL, params=params, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-    except Exception:
-        pass
+    archive_url = "https://archive-api.open-meteo.com/v1/archive"
 
-    if not data or "hourly" not in data or not data["hourly"].get("time"):
-        archive_url = "https://archive-api.open-meteo.com/v1/archive"
-        try:
-            response = requests.get(archive_url, params=params, timeout=15)
-            response.raise_for_status()
-            data = response.json()
-        except requests.RequestException as e:
+    try:
+        response = requests.get(archive_url, params=params, timeout=15)
+        if response.status_code == 400:
+            err_data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+            reason = err_data.get("reason", "Архівні дані для цієї дати ще не сформовані в ERA5.")
             raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Помилка отримання фактичної погоди з Open-Meteo Archive: {str(e)}"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Open-Meteo Archive: {reason}"
             )
+        response.raise_for_status()
+        data = response.json()
+    except HTTPException:
+        raise
+    except requests.RequestException as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Помилка підключення до сервісу фактичної погоди Open-Meteo Archive: {str(e)}"
+        )
 
     hourly_data = data.get("hourly", {})
     timestamps = hourly_data.get("time", [])
+
+
     temperatures = hourly_data.get("temperature_2m", [])
     cloud_covers = hourly_data.get("cloud_cover", [])
     pressures = hourly_data.get("surface_pressure", [])
@@ -403,10 +402,10 @@ def fetch_and_save_archive_weather(db: Session, station_id: int, target_date: Op
 
 
 def fetch_and_save_visual_crossing_weather(
-    db: Session,
-    station_id: int,
-    target_date: Optional[date] = None,
-    api_key: Optional[str] = None
+        db: Session,
+        station_id: int,
+        target_date: Optional[date] = None,
+        api_key: Optional[str] = None
 ) -> int:
     """
     Завантажує погодинний прогноз погоди на обрану дату з Visual Crossing Timeline API
@@ -537,4 +536,3 @@ def fetch_and_save_visual_crossing_weather(
 
     db.commit()
     return saved_count
-
