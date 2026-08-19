@@ -203,6 +203,7 @@ def run_batch_forecast_for_all_stations(
 
     from app.services.weather_service import (
         fetch_and_save_weather,
+        fetch_and_save_weather_batch,
         fetch_and_save_owm_weather,
         fetch_and_save_archive_weather,
         fetch_and_save_visual_crossing_weather
@@ -238,11 +239,18 @@ def run_batch_forecast_for_all_stations(
         src_kwh = 0.0
         src_details = []
 
+        # Якщо джерело Open-Meteo — робимо ОДИН пакетний HTTP-запит на всі станції одразу
+        if src == "Open-Meteo":
+            try:
+                fetch_and_save_weather_batch(db, stations, target_date=target_date)
+            except Exception as batch_err:
+                print(f"Warning: batch Open-Meteo fetch failed: {batch_err}, falling back to per-station fetch")
+
         for s in stations:
             try:
-                # 1. Завантажуємо погоду для конкретного джерела
+                # 1. Завантажуємо погоду (для OWM/VC/Archive індивідуально, або як фолбек для Open-Meteo)
                 if src == "Open-Meteo":
-                    fetch_and_save_weather(db, s.id, target_date=target_date)
+                    pass # Вже завантажено пакетом вище
                 elif src == "Open-Meteo-Archive":
                     fetch_and_save_archive_weather(db, s.id, target_date=target_date)
                 elif src == "Visual-Crossing":
@@ -250,8 +258,8 @@ def run_batch_forecast_for_all_stations(
                 else:
                     fetch_and_save_owm_weather(db, s.id, target_date=target_date)
 
-
                 # 2. Визначаємо моделі: якщо model_id не задано — автоматично рахуємо для ВСІХ зареєстрованих моделей СЕС
+
                 if model_id:
                     target_models = db.query(NeuralModel).filter(
                         NeuralModel.id == model_id,

@@ -1,6 +1,7 @@
 import os
+import time
 from datetime import datetime, date, timezone, timedelta
-from typing import Optional
+from typing import Optional, List
 
 import requests
 from fastapi import HTTPException, status
@@ -15,6 +16,7 @@ OWM_APPID = os.getenv("OPENWEATHERMAP_API_KEY", "")
 OWM_URL = "https://api.openweathermap.org/data/2.5/forecast"
 VISUAL_CROSSING_URL = "https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline"
 VISUAL_CROSSING_API_KEY = os.getenv("VISUAL_CROSSING_API_KEY", "")
+CUSTOM_USER_AGENT = "SolarForecastSystem/1.0 (https://solar-forecast-system.onrender.com)"
 
 
 def fetch_and_save_weather(db: Session, station_id: int, target_date: Optional[date] = None) -> int:
@@ -41,15 +43,28 @@ def fetch_and_save_weather(db: Session, station_id: int, target_date: Optional[d
         "start_date": target_date.isoformat(),
         "end_date": target_date.isoformat()
     }
+    headers = {"User-Agent": CUSTOM_USER_AGENT}
 
-    try:
-        response = requests.get(OPEN_METEO_URL, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-    except requests.RequestException as e:
+    # Повторні спроби з експоненційною затримкою на випадок обмеження 429
+    data = None
+    last_error = None
+    for attempt in range(3):
+        try:
+            response = requests.get(OPEN_METEO_URL, params=params, headers=headers, timeout=12)
+            if response.status_code == 429:
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            response.raise_for_status()
+            data = response.json()
+            break
+        except requests.RequestException as e:
+            last_error = e
+            time.sleep(1.0 * (attempt + 1))
+
+    if data is None:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Помилка підключення до сервісу погоди Open-Meteo: {str(e)}"
+            detail=f"Помилка підключення до сервісу погоди Open-Meteo: {str(last_error)}"
         )
 
     hourly_data = data.get("hourly", {})
@@ -70,6 +85,7 @@ def fetch_and_save_weather(db: Session, station_id: int, target_date: Optional[d
             WeatherForecast.timestamp.in_(dt_list)
         ).all()
     }
+
 
     for i in range(len(timestamps)):
         dt_utc = dt_list[i]
@@ -123,7 +139,136 @@ def fetch_and_save_weather(db: Session, station_id: int, target_date: Optional[d
     return saved_count
 
 
+def fetch_and_save_weather_batch(db: Session, stations: List[Station], target_date: Optional[date] = None) -> int:
+    """
+    Пакетно завантажує прогноз погоди для списку сонячних станцій з Open-Meteo за ОДИН HTTP-запит,
+    повністю усуваючи ризик обмежень 429 Too Many Requests.
+    """
+    if not stations:
+        return 0
+
+    if target_date is None:
+        target_date = (datetime.now(timezone.utc) + timedelta(days=1)).date()
+
+    lats_str = ",".join(str(s.latitude) for s in stations)
+    lons_str = ",".join(str(s.longitude) for s in stations)
+
+    params = {
+        "latitude": lats_str,
+        "longitude": lons_str,
+        "hourly": "temperature_2m,relative_humidity_2m,surface_pressure,cloud_cover,wind_speed_10m",
+        "wind_speed_unit": "ms",
+        "timezone": "UTC",
+        "start_date": target_date.isoformat(),
+        "end_date": target_date.isoformat()
+    }
+    headers = {"User-Agent": CUSTOM_USER_AGENT}
+
+    data = None
+    last_error = None
+    for attempt in range(3):
+        try:
+            response = requests.get(OPEN_METEO_URL, params=params, headers=headers, timeout=20)
+            if response.status_code == 429:
+                time.sleep(2.0 * (attempt + 1))
+                continue
+            response.raise_for_status()
+            data = response.json()
+            break
+        except requests.RequestException as e:
+            last_error = e
+            time.sleep(1.5 * (attempt + 1))
+
+    if data is None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Помилка пакетного підключення до Open-Meteo: {str(last_error)}"
+        )
+
+    # Якщо станція одна, Open-Meteo повертає dict, якщо кілька - list
+    results_list = data if isinstance(data, list) else [data]
+
+    total_saved = 0
+    start_dt = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0, tzinfo=timezone.utc)
+    end_dt = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59, tzinfo=timezone.utc)
+
+    for idx, station in enumerate(stations):
+        if idx >= len(results_list):
+            break
+        st_data = results_list[idx]
+        hourly = st_data.get("hourly", {})
+        timestamps = hourly.get("time", [])
+        if not timestamps:
+            continue
+
+        temperatures = hourly.get("temperature_2m", [])
+        cloud_covers = hourly.get("cloud_cover", [])
+        pressures = hourly.get("surface_pressure", [])
+        humidities = hourly.get("relative_humidity_2m", [])
+        wind_speeds = hourly.get("wind_speed_10m", [])
+
+        dt_list = [datetime.fromisoformat(ts).replace(tzinfo=timezone.utc) for ts in timestamps]
+
+        existing_map = {
+            w.timestamp: w for w in db.query(WeatherForecast).filter(
+                WeatherForecast.station_id == station.id,
+                WeatherForecast.source == "Open-Meteo",
+                WeatherForecast.timestamp.in_(dt_list)
+            ).all()
+        }
+
+        for i in range(len(timestamps)):
+            dt_utc = dt_list[i]
+            sun_data = calculate_sun_position(station.latitude, station.longitude, dt_utc)
+            azimuth = sun_data["azimuth"]
+            elevation = sun_data["elevation"]
+            st_s = sun_data["st_s"]
+            h_svetl = sun_data["h_svetl"]
+            day_of_week = dt_utc.isoweekday()
+            ww = 0.0
+
+            existing = existing_map.get(dt_utc)
+
+            if existing:
+                existing.temperature = temperatures[i]
+                existing.cloud_cover = cloud_covers[i]
+                existing.pressure = pressures[i]
+                existing.humidity = humidities[i]
+                existing.wind_speed = wind_speeds[i]
+                existing.source = "Open-Meteo"
+                existing.st_s = st_s
+                existing.h_svetl = round(h_svetl, 6)
+                existing.azimuth = round(azimuth, 6)
+                existing.elevation = round(elevation, 6)
+                existing.day_of_week = day_of_week
+                existing.ww = ww
+            else:
+                weather_record = WeatherForecast(
+                    station_id=station.id,
+                    timestamp=dt_utc,
+                    temperature=temperatures[i],
+                    cloud_cover=cloud_covers[i],
+                    pressure=pressures[i],
+                    humidity=humidities[i],
+                    wind_speed=wind_speeds[i],
+                    source="Open-Meteo",
+                    st_s=st_s,
+                    h_svetl=round(h_svetl, 6),
+                    azimuth=round(azimuth, 6),
+                    elevation=round(elevation, 6),
+                    day_of_week=day_of_week,
+                    ww=ww
+                )
+                db.add(weather_record)
+
+            total_saved += 1
+
+    db.commit()
+    return total_saved
+
+
 def _incl(mr: dict, lr_yy: int, lr_mm: int, lr_day: int, lr_hh_in: float) -> bool:
+
     """Точний аналог функції Incl(mr, lr) з unit2.py"""
     return (mr["yy"] == lr_yy) and (mr["mm"] == lr_mm) and (mr["day"] == lr_day) and (mr["hh"] >= lr_hh_in)
 
