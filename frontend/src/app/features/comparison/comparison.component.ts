@@ -41,6 +41,17 @@ export class ComparisonComponent implements OnInit {
         return yesterday.toISOString().split('T')[0];
     }
 
+    getTodayDate(): string {
+        const today = new Date();
+        return today.toISOString().split('T')[0];
+    }
+
+    isArchiveDisabled = computed<boolean>(() => {
+        const selected = this.selectedDate();
+        const today = this.getTodayDate();
+        return selected >= today;
+    });
+
     chartLabels = computed<string[]>(() => {
         const data = this.comparisonData();
         if (!data || !data.hourly_data || data.hourly_data.length === 0) return [];
@@ -177,6 +188,9 @@ export class ComparisonComponent implements OnInit {
         const input = event.target as HTMLInputElement;
         if (input.value) {
             this.selectedDate.set(input.value);
+            if (this.isArchiveDisabled() && this.selectedWeatherSource() === 'Open-Meteo-Archive') {
+                this.selectedWeatherSource.set('OpenWeatherMap');
+            }
             this.loading.set(true);
             this.error.set(null);
             const stationId = this.selectedStationId();
@@ -188,7 +202,13 @@ export class ComparisonComponent implements OnInit {
 
     onWeatherSourceChange(event: Event): void {
         const select = event.target as HTMLSelectElement;
-        this.selectedWeatherSource.set(select.value);
+        const requestedSource = select.value;
+        if (requestedSource === 'Open-Meteo-Archive' && this.isArchiveDisabled()) {
+            this.selectedWeatherSource.set('OpenWeatherMap');
+            select.value = 'OpenWeatherMap';
+            return;
+        }
+        this.selectedWeatherSource.set(requestedSource);
         this.loading.set(true);
         this.error.set(null);
         const stationId = this.selectedStationId();

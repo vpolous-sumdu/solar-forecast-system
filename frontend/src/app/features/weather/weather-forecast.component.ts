@@ -75,6 +75,17 @@ export class WeatherForecastComponent implements OnInit {
         return tomorrow.toISOString().split('T')[0];
     }
 
+    getTodayDate(): string {
+        const today = new Date();
+        return today.toISOString().split('T')[0];
+    }
+
+    isArchiveDisabled = computed<boolean>(() => {
+        const selected = this.selectedDate();
+        const today = this.getTodayDate();
+        return selected >= today;
+    });
+
 
     ngOnInit(): void {
         this.loadStations();
@@ -148,6 +159,10 @@ export class WeatherForecastComponent implements OnInit {
         const input = event.target as HTMLInputElement;
         if (input.value) {
             this.selectedDate.set(input.value);
+            // Якщо обрано сьогодні або майбутню дату, а джерелом було Open-Meteo-Archive — скидаємо на OpenWeatherMap
+            if (this.isArchiveDisabled() && this.selectedWeatherSource() === 'Open-Meteo-Archive') {
+                this.selectedWeatherSource.set('OpenWeatherMap');
+            }
             this.generationMap.set({});
             const stationId = this.selectedStationId();
             if (stationId) {
@@ -158,7 +173,13 @@ export class WeatherForecastComponent implements OnInit {
 
     onWeatherSourceChange(event: Event): void {
         const select = event.target as HTMLSelectElement;
-        this.selectedWeatherSource.set(select.value);
+        const requestedSource = select.value;
+        if (requestedSource === 'Open-Meteo-Archive' && this.isArchiveDisabled()) {
+            this.selectedWeatherSource.set('OpenWeatherMap');
+            select.value = 'OpenWeatherMap';
+            return;
+        }
+        this.selectedWeatherSource.set(requestedSource);
         this.generationMap.set({});
         const stationId = this.selectedStationId();
         if (stationId) {
@@ -216,6 +237,10 @@ export class WeatherForecastComponent implements OnInit {
         if (source === 'OpenWeatherMap') {
             this.fetchFreshOWMWeather();
         } else if (source === 'Open-Meteo-Archive') {
+            if (this.isArchiveDisabled()) {
+                this.error.set('Фактична (архівна) погода ще недоступна для сьогодні/майбутнього, оскільки цей день ще не минув.');
+                return;
+            }
             this.fetchFreshArchiveWeather();
         } else {
             this.fetchFreshWeather();
@@ -291,6 +316,12 @@ export class WeatherForecastComponent implements OnInit {
 
         const source = this.selectedWeatherSource();
         const date = this.selectedDate();
+
+        if (source === 'Open-Meteo-Archive' && this.isArchiveDisabled()) {
+            this.error.set('Розрахунок генерації за фактичною погодою можливий лише для дат, які вже минули.');
+            return;
+        }
+
         this.generating.set(true);
         this.error.set(null);
 

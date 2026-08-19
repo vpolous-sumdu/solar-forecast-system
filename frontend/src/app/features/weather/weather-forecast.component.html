@@ -28,10 +28,18 @@
 
             <div class="selector-group">
                 <label for="weatherProviderSelect" class="select-label">Джерело погоди:</label>
-                <select id="weatherProviderSelect" class="station-select" (change)="onWeatherSourceChange($event)">
-                    <option value="OpenWeatherMap">OpenWeatherMap (Еталонні Суми)</option>
-                    <option value="Open-Meteo">Open-Meteo (GPS СЕС)</option>
-                    <option value="Open-Meteo-Archive">Open-Meteo (Реальна фактична погода)</option>
+                <select id="weatherProviderSelect" class="station-select" [value]="selectedWeatherSource()" (change)="onWeatherSourceChange($event)">
+                    <option value="OpenWeatherMap" [selected]="selectedWeatherSource() === 'OpenWeatherMap'">
+                        OpenWeatherMap (Еталонні Суми)
+                    </option>
+                    <option value="Open-Meteo" [selected]="selectedWeatherSource() === 'Open-Meteo'">Open-Meteo (GPS
+                        СЕС)
+                    </option>
+                    <option value="Open-Meteo-Archive" [selected]="selectedWeatherSource() === 'Open-Meteo-Archive'"
+                            [disabled]="isArchiveDisabled()">
+                        Open-Meteo (Реальна фактична
+                        погода){{ isArchiveDisabled() ? ' — недоступно (день ще не минув)' : '' }}
+                    </option>
                 </select>
             </div>
 
