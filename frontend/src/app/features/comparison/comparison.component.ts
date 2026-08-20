@@ -1,10 +1,10 @@
-import {Component, computed, inject, OnInit, signal} from '@angular/core';
+import {ChangeDetectionStrategy, Component, computed, inject, OnInit, signal} from '@angular/core';
 import {CommonModule, DecimalPipe} from '@angular/common';
 import {StationService} from '../../core/services/station.service';
 import {ComparisonService} from '../../core/services/comparison.service';
 import {GenerationService} from '../../core/services/generation.service';
 import {Station} from '../../core/models/station.model';
-import {ComparisonResponse} from '../../core/models/comparison.model';
+import {ComparisonResponse, HourlyComparisonItem, HourlySourceData} from '../../core/models/comparison.model';
 import {ChartSeries} from '../../core/models/chart.model';
 import {NeuralModel} from '../../core/models/neural-model.model';
 import {PowerChartComponent} from '../../shared/components/power-chart/power-chart.component';
@@ -12,6 +12,7 @@ import {PowerChartComponent} from '../../shared/components/power-chart/power-cha
 @Component({
     selector: 'app-comparison',
     standalone: true,
+    changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule, DecimalPipe, PowerChartComponent],
     templateUrl: './comparison.component.html',
     styleUrl: './comparison.component.css'
@@ -25,10 +26,18 @@ export class ComparisonComponent implements OnInit {
     selectedStationId = signal<number | null>(null);
     selectedDate = signal<string>(this.getDefaultDate());
     availableDates = signal<string[]>([]);
-    selectedWeatherSource = signal<string>('OpenWeatherMap');
     models = signal<NeuralModel[]>([]);
     selectedModelId = signal<number | null>(null);
     loadingModels = signal<boolean>(false);
+
+    readonly weatherSourceOptions = [
+        {id: 'OpenWeatherMap', label: 'OpenWeatherMap', color: '#2563eb'},
+        {id: 'Open-Meteo', label: 'Open-Meteo', color: '#f59e0b'},
+        {id: 'Visual-Crossing', label: 'Visual-Crossing', color: '#10b981'},
+        {id: 'Open-Meteo-Archive', label: 'Open-Meteo (Фактична погода)', color: '#8b5cf6'}
+    ];
+
+    selectedSources = signal<string[]>(['OpenWeatherMap', 'Open-Meteo', 'Visual-Crossing']);
 
     comparisonData = signal<ComparisonResponse | null>(null);
     loading = signal<boolean>(false);
@@ -52,6 +61,36 @@ export class ComparisonComponent implements OnInit {
         return selected >= today;
     });
 
+    isSourceDisabled(sourceId: string): boolean {
+        if (sourceId === 'Open-Meteo-Archive') {
+            return this.isArchiveDisabled();
+        }
+        return false;
+    }
+
+    isSourceSelected(sourceId: string): boolean {
+        return this.selectedSources().includes(sourceId);
+    }
+
+    toggleSource(sourceId: string): void {
+        if (this.isSourceDisabled(sourceId)) return;
+
+        const current = this.selectedSources();
+        if (current.includes(sourceId)) {
+            this.selectedSources.set(current.filter(s => s !== sourceId));
+        } else {
+            this.selectedSources.set([...current, sourceId]);
+        }
+    }
+
+    availableSourcesWithData = computed<string[]>(() => {
+        const selected = this.selectedSources();
+        const data = this.comparisonData();
+        const presentSources = data?.available_sources || [];
+        const order = ['OpenWeatherMap', 'Open-Meteo', 'Visual-Crossing', 'Open-Meteo-Archive'];
+        return order.filter(s => selected.includes(s) && (presentSources.length === 0 || presentSources.includes(s)));
+    });
+
     chartLabels = computed<string[]>(() => {
         const data = this.comparisonData();
         if (!data || !data.hourly_data || data.hourly_data.length === 0) return [];
@@ -62,23 +101,88 @@ export class ComparisonComponent implements OnInit {
         const data = this.comparisonData();
         if (!data || !data.hourly_data || data.hourly_data.length === 0) return [];
 
-        const forecastValues = data.hourly_data.map(item => item.forecast_kw);
-        const actualValues = data.hourly_data.map(item => item.actual_kw);
+        const series: ChartSeries[] = [];
 
-        return [
-            {
-                name: 'Прогноз генерації (кВт)',
-                data: forecastValues,
-                color: '#2563eb',
-                fillColor: 'rgba(37, 99, 235, 0.12)'
-            },
-            {
+        // 1. Фактична генерація (PVOutput)
+        if (data.has_actual_data) {
+            const actualValues = data.hourly_data.map(item => item.actual_kw);
+            series.push({
                 name: 'Фактична генерація (PVOutput, кВт)',
                 data: actualValues,
-                color: '#f97316',
-                fillColor: 'rgba(249, 115, 22, 0.10)'
+                color: '#ea580c',
+                fillColor: 'rgba(234, 88, 12, 0.10)'
+            });
+        }
+
+        // 2. Прогнози для кожного активного джерела
+        const activeSources = this.availableSourcesWithData();
+        const sourceColorMap: Record<string, { color: string; fill: string }> = {
+            'OpenWeatherMap': {color: '#2563eb', fill: 'rgba(37, 99, 235, 0.08)'},
+            'Open-Meteo': {color: '#f59e0b', fill: 'rgba(245, 158, 11, 0.08)'},
+            'Visual-Crossing': {color: '#10b981', fill: 'rgba(16, 185, 129, 0.08)'},
+            'Open-Meteo-Archive': {color: '#8b5cf6', fill: 'rgba(139, 92, 246, 0.08)'}
+        };
+
+        for (const src of activeSources) {
+            const values = data.hourly_data.map(item => {
+                if (item.sources && item.sources[src]) {
+                    return item.sources[src].forecast_kw;
+                }
+                if (src === data.weather_source) {
+                    return item.forecast_kw;
+                }
+                return 0;
+            });
+
+            const col = sourceColorMap[src] || {color: '#6b7280', fill: 'rgba(107, 114, 128, 0.08)'};
+            series.push({
+                name: `${src} (Прогноз, кВт)`,
+                data: values,
+                color: col.color,
+                fillColor: col.fill
+            });
+        }
+
+        return series;
+    });
+
+    metricsList = computed<Array<{
+        source: string;
+        total_actual_kwh: number;
+        total_forecast_kwh: number;
+        total_delta_kwh: number;
+        abs_error_kwh: number;
+        relative_error_percent: number;
+        mae_kw?: number;
+        rmse_kw?: number;
+    }>>(() => {
+        const data = this.comparisonData();
+        if (!data) return [];
+        const activeSources = this.availableSourcesWithData();
+        const sMetrics = data.sources_metrics || {};
+
+        const list: Array<{
+            source: string;
+            total_actual_kwh: number;
+            total_forecast_kwh: number;
+            total_delta_kwh: number;
+            abs_error_kwh: number;
+            relative_error_percent: number;
+            mae_kw?: number;
+            rmse_kw?: number;
+        }> = [];
+
+        for (const src of activeSources) {
+            const m = sMetrics[src] || (src === data.weather_source ? data.metrics : null);
+            if (m) {
+                list.push({
+                    source: src,
+                    ...m
+                });
             }
-        ];
+        }
+
+        return list;
     });
 
     ngOnInit(): void {
@@ -139,16 +243,14 @@ export class ComparisonComponent implements OnInit {
         });
     }
 
-
     loadAvailableDates(stationId: number, modelId?: number | null): void {
         this.loading.set(true);
-        const yesterdayDate = this.getDefaultDate(); // Завжди попередній день (вчора)
+        const yesterdayDate = this.getDefaultDate();
         this.selectedDate.set(yesterdayDate);
 
         this.comparisonService.getAvailableDates(stationId).subscribe({
             next: (res) => {
                 this.availableDates.set(res.dates);
-                // Завантажуємо порівняння строго на попередній день з коректною моделлю
                 this.loadComparison(stationId, yesterdayDate, false, modelId);
             },
             error: () => {
@@ -156,8 +258,6 @@ export class ComparisonComponent implements OnInit {
             }
         });
     }
-
-
 
     onStationChange(event: Event): void {
         const select = event.target as HTMLSelectElement;
@@ -183,23 +283,12 @@ export class ComparisonComponent implements OnInit {
         }
     }
 
-    onDateSelectChange(event: Event): void {
-        const select = event.target as HTMLSelectElement;
-        this.selectedDate.set(select.value);
-        this.loading.set(true);
-        this.error.set(null);
-        const stationId = this.selectedStationId();
-        if (stationId && select.value) {
-            this.loadComparison(stationId, select.value);
-        }
-    }
-
     onDateInputChange(event: Event): void {
         const input = event.target as HTMLInputElement;
         if (input.value) {
             this.selectedDate.set(input.value);
-            if (this.isArchiveDisabled() && this.selectedWeatherSource() === 'Open-Meteo-Archive') {
-                this.selectedWeatherSource.set('OpenWeatherMap');
+            if (this.isArchiveDisabled() && this.selectedSources().includes('Open-Meteo-Archive')) {
+                this.selectedSources.set(this.selectedSources().filter(s => s !== 'Open-Meteo-Archive'));
             }
             this.loading.set(true);
             this.error.set(null);
@@ -207,24 +296,6 @@ export class ComparisonComponent implements OnInit {
             if (stationId) {
                 this.loadComparison(stationId, input.value);
             }
-        }
-    }
-
-    onWeatherSourceChange(event: Event): void {
-        const select = event.target as HTMLSelectElement;
-        const requestedSource = select.value;
-        if (requestedSource === 'Open-Meteo-Archive' && this.isArchiveDisabled()) {
-            this.selectedWeatherSource.set('OpenWeatherMap');
-            select.value = 'OpenWeatherMap';
-            return;
-        }
-        this.selectedWeatherSource.set(requestedSource);
-        this.loading.set(true);
-        this.error.set(null);
-        const stationId = this.selectedStationId();
-        const dateStr = this.selectedDate();
-        if (stationId && dateStr) {
-            this.loadComparison(stationId, dateStr);
         }
     }
 
@@ -236,7 +307,7 @@ export class ComparisonComponent implements OnInit {
         this.comparisonService.getComparison(
             stationId,
             dateStr,
-            this.selectedWeatherSource(),
+            'ALL',
             effectiveModelId,
             forceSync
         ).subscribe({
@@ -266,10 +337,40 @@ export class ComparisonComponent implements OnInit {
                 this.loadComparison(stationId, dateStr, false);
             },
             error: (err) => {
-                this.comparisonData.set(null);
                 this.syncing.set(false);
                 this.error.set(err.error?.detail || 'Помилка синхронізації з PVOutput');
             }
         });
+    }
+
+    getSourceBadgeClass(source: string): string {
+        switch (source) {
+            case 'OpenWeatherMap':
+                return 'badge-owm';
+            case 'Open-Meteo':
+                return 'badge-openmeteo';
+            case 'Visual-Crossing':
+                return 'badge-visualcrossing';
+            case 'Open-Meteo-Archive':
+                return 'badge-archive';
+            default:
+                return 'badge-default';
+        }
+    }
+
+    getSourceHourly(row: HourlyComparisonItem, source: string): HourlySourceData | null {
+        if (row.sources && row.sources[source]) {
+            return row.sources[source];
+        }
+        if (this.comparisonData()?.weather_source === source) {
+            return {
+                forecast_watts: row.forecast_watts,
+                forecast_kw: row.forecast_kw,
+                delta_watts: row.delta_watts,
+                delta_kw: row.delta_kw,
+                abs_delta_kw: row.abs_delta_kw
+            };
+        }
+        return null;
     }
 }

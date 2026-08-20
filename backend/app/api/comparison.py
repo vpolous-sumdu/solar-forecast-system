@@ -24,7 +24,8 @@ def get_comparison(
         station_id: int,
         db: DbSessionDep,
         date_str: Optional[str] = Query(None, alias="date", description="Дата у форматі YYYY-MM-DD"),
-        weather_source: str = Query("OpenWeatherMap", description="Джерело погоди (OpenWeatherMap / Open-Meteo)"),
+        weather_source: str = Query("ALL",
+                                    description="Джерело погоди (ALL / OpenWeatherMap / Open-Meteo / Visual-Crossing / Open-Meteo-Archive)"),
         model_id: Optional[int] = Query(None, description="ID моделі нейромережі"),
         force_sync: bool = Query(False, description="Примусово оновити факт з PVOutput API")
 ):

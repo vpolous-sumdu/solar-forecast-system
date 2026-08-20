@@ -12,7 +12,7 @@ export class ComparisonService {
     getComparison(
         stationId: number,
         date?: string,
-        weatherSource: string = 'OpenWeatherMap',
+        weatherSource: string = 'ALL',
         modelId?: number,
         forceSync: boolean = false
     ): Observable<ComparisonResponse> {

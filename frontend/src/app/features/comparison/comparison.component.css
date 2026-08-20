@@ -19,13 +19,67 @@
 .selector-group {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.75rem;
 }
 
 .select-label {
     font-size: 0.9rem;
     font-weight: 600;
     color: var(--text-primary);
+}
+
+.sources-checkbox-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.checkboxes-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.source-checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.source-checkbox-label.disabled-label {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.source-checkbox-label.disabled-label:hover {
+    color: var(--text-primary);
+}
+
+.disabled-tag {
+    font-size: 0.75rem;
+    color: var(--text-weak);
+    font-weight: normal;
+    background: var(--surface-light);
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+}
+
+.source-checkbox {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #2563eb;
+    margin: 0;
+}
+
+.source-checkbox:disabled {
+    cursor: not-allowed;
 }
 
 .station-select, .date-input {
@@ -62,11 +116,6 @@
     cursor: pointer;
     letter-spacing: 0.01em;
     transition: all 0.15s ease;
-}
-
-.btn-sm {
-    padding: 0.35rem 0.75rem;
-    font-size: 0.8rem;
 }
 
 .btn-primary {
@@ -115,7 +164,7 @@
     border: 1px solid #fde68a;
 }
 
-/* Класична компактна таблиця підсумків (Варіант 2) */
+/* Зведена таблиця метрик точності (Scorecard) */
 .summary-table-wrapper {
     overflow-x: auto;
     border-radius: var(--radius-small);
@@ -134,7 +183,7 @@
     background: var(--surface-light);
     color: var(--text-weak);
     font-weight: 600;
-    padding: 0.75rem 1.25rem;
+    padding: 0.75rem 1rem;
     text-align: left;
     font-size: 0.78rem;
     text-transform: uppercase;
@@ -143,32 +192,22 @@
 }
 
 .summary-table td {
-    padding: 0.9rem 1.25rem;
+    padding: 0.85rem 1rem;
     color: var(--text-primary);
-    font-size: 0.95rem;
+    font-size: 0.9rem;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.6);
 }
 
-.forecast-text {
-    color: #2563eb;
+.summary-table tbody tr:last-child td {
+    border-bottom: none;
 }
 
-.actual-text {
-    color: #ea580c;
+.source-name-text {
+    font-weight: 600;
+    color: var(--text-primary);
 }
 
-.error-text {
-    color: #0284c7;
-}
-
-.delta-positive {
-    color: #16a34a;
-}
-
-.delta-negative {
-    color: #dc2626;
-}
-
-/* Table */
+/* Погодинна таблиця порівняння */
 .table-wrapper {
     overflow-x: auto;
     border-radius: 8px;
@@ -185,17 +224,40 @@
     background: var(--surface-light);
     color: var(--text-weak);
     font-weight: 600;
-    padding: 0.85rem 1rem;
+    padding: 0.75rem 1rem;
     text-align: left;
     font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.01em;
     border-bottom: 1px solid var(--border-color);
+    border-right: 1px solid rgba(226, 232, 240, 0.6);
+}
+
+.header-source-group {
+    text-align: center !important;
+    font-weight: 700 !important;
+    color: var(--text-primary) !important;
+    font-size: 0.82rem !important;
+    background: #fafbfc !important;
+    border-bottom: 1px solid var(--border-color) !important;
+}
+
+.sub-th {
+    font-size: 0.72rem !important;
+    padding: 0.55rem 0.85rem !important;
+    background: #ffffff !important;
+    border-bottom: 2px solid var(--border-color) !important;
+}
+
+.th-time, .th-actual, .th-status {
+    vertical-align: middle;
+    border-right: 1px solid var(--border-color);
 }
 
 .weather-table td {
-    padding: 0.85rem 1rem;
+    padding: 0.75rem 1rem;
     border-bottom: 1px solid var(--border-color);
+    border-right: 1px solid rgba(226, 232, 240, 0.4);
     color: var(--text-primary);
 }
 
@@ -209,72 +271,43 @@
 
 .time-cell {
     color: var(--text-primary);
-    font-weight: 600;
-}
-
-.badge-forecast {
     font-weight: 700;
-    color: #1d4ed8;
-    background: #eff6ff;
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
-    border: 1px solid #bfdbfe;
+    white-space: nowrap;
+    font-size: 0.88rem;
 }
 
-.badge-actual {
+.badge-power {
+    display: inline-block;
     font-weight: 700;
-    color: #c2410c;
-    background: #fff7ed;
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
-    border: 1px solid #fed7aa;
+    font-size: 0.88rem;
+    white-space: nowrap;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
 }
 
-.badge-delta {
-    font-size: 0.82rem;
-    font-weight: 600;
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
+.badge-owm {
+    color: #2563eb;
 }
 
-.delta-badge-pos {
-    color: #15803d;
-    background: #f0fdf4;
-    border: 1px solid #bbf7d0;
+.badge-openmeteo {
+    color: #f59e0b;
 }
 
-.delta-badge-neg {
-    color: #b91c1c;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
+.badge-visualcrossing {
+    color: #10b981;
 }
 
-.delta-badge-zero {
-    color: #64748b;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+.badge-archive {
+    color: #8b5cf6;
 }
 
-.badge-status {
-    font-size: 0.78rem;
-    font-weight: 600;
-    padding: 0.2rem 0.45rem;
-    border-radius: 4px;
-}
-
-.status-2 {
-    background: #fef3c7;
-    color: #b45309;
-}
-
-.status-1 {
-    background: #ffedd5;
-    color: #c2410c;
-}
-
-.status-0 {
-    background: #f1f5f9;
+.badge-default {
     color: #475569;
+}
+
+.text-muted {
+    color: var(--text-weak);
 }
 
 .empty-state {
@@ -282,6 +315,13 @@
     padding: 2.5rem;
     color: var(--text-weak);
     font-size: 0.95rem;
+}
+
+.select-prompt {
+    background: var(--surface-light);
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-small);
+    margin-top: 1rem;
 }
 
 .col-time {

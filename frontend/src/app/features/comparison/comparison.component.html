@@ -22,34 +22,14 @@
                 <input
                         type="date"
                         id="dateInput"
-                        class="date-input"
+                        class="station-select"
                         [value]="selectedDate()"
                         (change)="onDateInputChange($event)"
                 />
             </div>
 
             <div class="selector-group">
-                <label for="weatherProviderSelect" class="select-label">Джерело прогнозу:</label>
-                <select id="weatherProviderSelect" class="station-select" [value]="selectedWeatherSource()" (change)="onWeatherSourceChange($event)">
-                    <option value="OpenWeatherMap" [selected]="selectedWeatherSource() === 'OpenWeatherMap'">
-                        OpenWeatherMap (Еталонні Суми)
-                    </option>
-                    <option value="Open-Meteo" [selected]="selectedWeatherSource() === 'Open-Meteo'">
-                        Open-Meteo (GPS СЕС)
-                    </option>
-                    <option value="Visual-Crossing" [selected]="selectedWeatherSource() === 'Visual-Crossing'">
-                        Visual Crossing (GPS СЕС)
-                    </option>
-                    <option value="Open-Meteo-Archive" [selected]="selectedWeatherSource() === 'Open-Meteo-Archive'"
-                            [disabled]="isArchiveDisabled()">
-                        Open-Meteo (Реальна фактична
-                        погода){{ isArchiveDisabled() ? ' — недоступно (день ще не минув)' : '' }}
-                    </option>
-                </select>
-            </div>
-
-            <div class="selector-group">
-                <label for="modelSelect" class="select-label">Модель:</label>
+                <label for="modelSelect" class="select-label">Модель нейромережі:</label>
                 @if (models().length === 0 && (loading() || loadingModels())) {
                     <div class="skeleton-box select-skeleton"></div>
                 } @else {
@@ -66,14 +46,43 @@
                 }
             </div>
 
+            <!-- Інтерактивні чекбокси вибору джерел прогнозу -->
+            <div class="selector-group sources-checkbox-group">
+                <span class="select-label">Джерела прогнозу:</span>
+                <div class="checkboxes-wrapper">
+                    @for (opt of weatherSourceOptions; track opt.id) {
+                        <label class="source-checkbox-label"
+                               [class.disabled-label]="isSourceDisabled(opt.id)"
+                               [attr.title]="isSourceDisabled(opt.id) ? 'Доступно тільки для минулих дат (архів)' : ''">
+                            <input
+                                    type="checkbox"
+                                    class="source-checkbox"
+                                    [checked]="isSourceSelected(opt.id)"
+                                    [disabled]="isSourceDisabled(opt.id)"
+                                    (change)="toggleSource(opt.id)"
+                            />
+                            <span>{{ opt.label }}</span>
+                            @if (isSourceDisabled(opt.id)) {
+                                <span class="disabled-tag">(архів)</span>
+                            }
+                        </label>
+                    }
+                </div>
+            </div>
+
             <div class="button-group">
                 <button
                         class="btn btn-secondary"
-                        [disabled]="syncing() || loading()"
+                        [disabled]="syncing() || loading() || !selectedStationId()"
                         (click)="syncFromPVOutput()"
                         title="Завантажити та оновити фактичні дані з PVOutput API"
                 >
-                    Оновити факт (PVOutput)
+                    @if (syncing()) {
+                        <span class="spinner spinner-sm" style="vertical-align: middle; margin-right: 6px;"></span>
+                        Оновлення факту...
+                    } @else {
+                        Оновити факт (PVOutput)
+                    }
                 </button>
 
                 <button
@@ -81,7 +90,13 @@
                         [disabled]="loading() || !selectedStationId()"
                         (click)="loadComparison(selectedStationId()!, selectedDate(), false)"
                 >
-                    Порівняти
+                    @if (loading() && !syncing()) {
+                        <span class="spinner spinner-sm"
+                              style="vertical-align: middle; margin-right: 6px; border-top-color: #ffffff; border-color: rgba(255,255,255,0.3);"></span>
+                        Завантаження...
+                    } @else {
+                        Оновити порівняння
+                    }
                 </button>
             </div>
         </div>
@@ -91,7 +106,7 @@
             <div class="status-error">Помилка: {{ error() }}</div>
         }
 
-        <!-- 2. Якщо помилки немає, показуємо інтерфейс з анімаціями/даними -->
+        <!-- 2. Якщо помилки немає, показуємо інтерфейс з даними / анімаціями -->
         @if (!error()) {
             <!-- Попередження, якщо немає прогнозу в БД (лише коли завантаження завершено) -->
             @if (!loading() && !syncing() && comparisonData() && !comparisonData()?.has_forecast_data) {
@@ -102,127 +117,295 @@
                 </div>
             }
 
-
-            <!-- Підсумкова таблиця (показується при завантаженні зі скелетонами або коли є дані) -->
-            @if (loading() || syncing() || (comparisonData() && comparisonData()?.has_forecast_data)) {
-                <div class="summary-table-wrapper">
-                    <table class="summary-table">
-                        <thead>
-                        <tr>
-                            <th>Сумарна реальна</th>
-                            <th>Абсолютна похибка</th>
-                            <th>Відносна похибка (%)</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                            @if (loading() || syncing()) {
-                                <tr>
-                                    <td>
-                                        <div class="skeleton-box" style="width: 140px;"></div>
-                                    </td>
-                                    <td>
-                                        <div class="skeleton-box" style="width: 140px;"></div>
-                                    </td>
-                                    <td>
-                                        <div class="skeleton-box" style="width: 90px;"></div>
-                                    </td>
-                                </tr>
-                            } @else {
-                                <tr>
-                                    <td><strong
-                                            class="actual-text">{{ comparisonData()?.metrics?.total_actual_kwh | number:'1.2-2' }}</strong>
-                                        кВт·год
-                                    </td>
-                                    <td><strong>{{ comparisonData()?.metrics?.abs_error_kwh | number:'1.2-2' }}</strong>
-                                        кВт·год
-                                    </td>
-                                    <td><strong
-                                            class="error-text">{{ comparisonData()?.metrics?.relative_error_percent | number:'1.2-2' }}
-                                        %</strong></td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+            @if (selectedSources().length === 0) {
+                <div class="empty-state select-prompt">
+                    Оберіть хоча б одне джерело прогнозу (чекбокси вище) для порівняння з фактичною генерацією.
                 </div>
+            } @else {
+                <!-- Зведена таблиця точності прогнозів -->
+                @if (loading() || (comparisonData() && (comparisonData()?.has_forecast_data || comparisonData()?.has_actual_data))) {
+                    <div class="summary-table-wrapper">
+                        <table class="summary-table">
+                            <thead>
+                            <tr>
+                                <th>Джерело прогнозу</th>
+                                <th>Факт PVOutput</th>
+                                <th>Прогноз</th>
+                                <th>Абсолютна похибка (Δ)</th>
+                                <th>Відносна похибка (δ %)</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                                @if (loading()) {
+                                    @for (i of [1, 2, 3]; track i) {
+                                        <tr>
+                                            <td>
+                                                <div class="skeleton-box" style="width: 120px;"></div>
+                                            </td>
+                                            <td>
+                                                <div class="skeleton-box" style="width: 90px;"></div>
+                                            </td>
+                                            <td>
+                                                <div class="skeleton-box" style="width: 90px;"></div>
+                                            </td>
+                                            <td>
+                                                <div class="skeleton-box" style="width: 90px;"></div>
+                                            </td>
+                                            <td>
+                                                <div class="skeleton-box" style="width: 80px;"></div>
+                                            </td>
+                                        </tr>
+                                    }
+                                } @else if (metricsList().length === 0) {
+                                    <tr>
+                                        <td colspan="5" class="empty-state">
+                                            Немає даних метрик для обраних джерел.
+                                        </td>
+                                    </tr>
+                                } @else {
+                                    @for (m of metricsList(); track m.source) {
+                                        <tr>
+                                            <td>
+                                                <span class="source-name-text">
+                                                    {{ m.source }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                @if (syncing()) {
+                                                    <div class="skeleton-box" style="width: 80px;"></div>
+                                                } @else {
+                                                    <strong>{{ m.total_actual_kwh | number:'1.2-2' }}</strong> кВт·год
+                                                }
+                                            </td>
+                                            <td>
+                                                <strong>{{ m.total_forecast_kwh | number:'1.2-2' }}</strong> кВт·год
+                                            </td>
+                                            <td>
+                                                @if (syncing()) {
+                                                    <div class="skeleton-box" style="width: 80px;"></div>
+                                                } @else {
+                                                    <strong>{{ m.abs_error_kwh | number:'1.2-2' }}</strong> кВт·год
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (syncing()) {
+                                                    <div class="skeleton-box" style="width: 60px;"></div>
+                                                } @else {
+                                                    <strong>
+                                                        {{ m.relative_error_percent | number:'1.2-2' }} %
+                                                    </strong>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
 
-                <!-- Графік Chart.js (зі скелетон-шимером під час завантаження) -->
-                <app-power-chart
-                        [labels]="chartLabels()"
-                        [series]="chartSeries()"
-                        [loading]="loading() || syncing()"
-                        [title]="'Графік порівняння прогнозованої та фактичної генерації СЕС (кВт)'"
-                ></app-power-chart>
+                <!-- Мульти-графік Chart.js -->
+                @if (chartLabels().length > 0 && chartSeries().length > 0) {
+                    <app-power-chart
+                            [labels]="chartLabels()"
+                            [series]="chartSeries()"
+                            [loading]="loading()"
+                            [title]="'Графік порівняння фактичної та прогнозованої генерації СЕС (кВт)'"
+                    ></app-power-chart>
+                }
 
-                <!-- Погодинна таблиця порівняння (тільки кВт) -->
+                <!-- Погодинна таблиця порівняння (Multi-Source Hourly Breakdown) -->
                 <div class="table-wrapper">
                     <table class="weather-table">
-                        <thead>
-                        <tr>
-                            <th>Година (UTC)</th>
-                            <th>Прогноз (кВт)</th>
-                            <th>Факт PVOutput (кВт)</th>
-                            <th>Різниця (Факт − Прогноз, кВт)</th>
-                            <th>Стан (st_s)</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                            @if (loading() || syncing()) {
-                                @for (i of [1, 2, 3, 4, 5, 6]; track i) {
-                                    <tr>
-                                        <td>
-                                            <div class="skeleton-box col-time"></div>
-                                        </td>
-                                        @for (j of [1, 2, 3, 4]; track j) {
+                        @if (availableSourcesWithData().length > 1) {
+                            <!-- Багатовимірна погодинна таблиця для кількох джерел -->
+                            <thead>
+                            <tr class="header-main-row">
+                                <th rowspan="2" class="th-time">Година (UTC)</th>
+                                <th rowspan="2" class="th-actual">Факт PVOutput</th>
+                                @for (src of availableSourcesWithData(); track src) {
+                                    <th colspan="2" class="header-source-group">
+                                        {{ src }}
+                                    </th>
+                                }
+                                <th rowspan="2" class="th-status">Стан (st_s)</th>
+                            </tr>
+                            <tr class="header-sub-row">
+                                @for (src of availableSourcesWithData(); track src) {
+                                    <th class="sub-th">Прогноз (кВт)</th>
+                                    <th class="sub-th">Різниця (кВт)</th>
+                                }
+                            </tr>
+                            </thead>
+                            <tbody>
+                                @if (loading()) {
+                                    @for (i of [1, 2, 3, 4, 5, 6]; track i) {
+                                        <tr>
+                                            <td>
+                                                <div class="skeleton-box col-time"></div>
+                                            </td>
                                             <td>
                                                 <div class="skeleton-box col-val"></div>
                                             </td>
-                                        }
-                                    </tr>
-                                }
-                            } @else if (!comparisonData() || comparisonData()?.hourly_data?.length === 0) {
-                                <tr>
-                                    <td colspan="5" class="empty-state">
-                                        Немає даних для порівняння на обрану дату.
-                                    </td>
-                                </tr>
-                            } @else {
-                                @for (row of comparisonData()?.hourly_data; track row.hour) {
+                                            @for (j of availableSourcesWithData(); track j) {
+                                                <td>
+                                                    <div class="skeleton-box col-val"></div>
+                                                </td>
+                                                <td>
+                                                    <div class="skeleton-box col-val"></div>
+                                                </td>
+                                            }
+                                            <td>
+                                                <div class="skeleton-box col-val"></div>
+                                            </td>
+                                        </tr>
+                                    }
+                                } @else if (!comparisonData() || comparisonData()?.hourly_data?.length === 0) {
                                     <tr>
-                                        <td class="time-cell"><strong>{{ row.hour | number:'2.0-0' }}:00
-                                            - {{ (row.hour + 1) | number:'2.0-0' }}:00</strong></td>
-                                        <td>
-                                            @if (row.forecast_kw > 0) {
-                                                <span class="badge-forecast">{{ row.forecast_kw | number:'1.4-4' }}
-                                                    кВт</span>
-                                            } @else {
-                                                <span class="text-muted">0.0000 кВт</span>
-                                            }
-                                        </td>
-                                        <td>
-                                            @if (row.actual_kw > 0) {
-                                                <span class="badge-actual">{{ row.actual_kw | number:'1.4-4' }}
-                                                    кВт</span>
-                                            } @else {
-                                                <span class="text-muted">0.0000 кВт</span>
-                                            }
-                                        </td>
-                                        <td>
-                      <span
-                              class="badge-delta"
-                              [ngClass]="row.delta_kw > 0 ? 'delta-badge-pos' : (row.delta_kw < 0 ? 'delta-badge-neg' : 'delta-badge-zero')"
-                      >
-                        {{ row.delta_kw > 0 ? '+' : '' }}{{ row.delta_kw | number:'1.4-4' }} кВт
-                      </span>
-                                        </td>
-                                        <td>
-                      <span class="badge-status" [ngClass]="'status-' + row.st_s">
-                        {{ row.st_s === 2 ? 'День' : (row.st_s === 1 ? 'Сутінки' : 'Ніч') }}
-                      </span>
+                                        <td [attr.colspan]="2 + availableSourcesWithData().length * 2 + 1"
+                                            class="empty-state">
+                                            Немає даних для порівняння на обрану дату.
                                         </td>
                                     </tr>
+                                } @else {
+                                    @for (row of comparisonData()?.hourly_data; track row.hour) {
+                                        <tr>
+                                            <td class="time-cell">
+                                                {{ row.hour | number:'2.0-0' }}:00
+                                                - {{ (row.hour + 1) | number:'2.0-0' }}:00
+                                            </td>
+                                            <td>
+                                                @if (syncing()) {
+                                                    <div class="skeleton-box col-val"></div>
+                                                } @else if (row.actual_kw > 0) {
+                                                    <span>{{ row.actual_kw | number:'1.4-4' }} кВт</span>
+                                                } @else {
+                                                    <span class="text-muted">0.0000 кВт</span>
+                                                }
+                                            </td>
+                                            @for (src of availableSourcesWithData(); track src) {
+                                                @let srcH = getSourceHourly(row, src);
+                                                <td>
+                                                    @if (srcH && srcH.forecast_kw > 0) {
+                                                        <span class="badge-power" [ngClass]="getSourceBadgeClass(src)">
+                                                            {{ srcH.forecast_kw | number:'1.4-4' }} кВт
+                                                        </span>
+                                                    } @else {
+                                                        <span class="text-muted">0.0000 кВт</span>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    @if (syncing()) {
+                                                        <div class="skeleton-box col-val"></div>
+                                                    } @else if (srcH) {
+                                                        <span>{{ srcH.delta_kw > 0 ? '+' : '' }}{{ srcH.delta_kw | number:'1.4-4' }}
+                                                            кВт</span>
+                                                    } @else {
+                                                        <span class="text-muted">—</span>
+                                                    }
+                                                </td>
+                                            }
+                                            <td>{{ row.st_s }}</td>
+                                        </tr>
+                                    }
                                 }
-                            }
-                        </tbody>
+                            </tbody>
+                        } @else {
+                            <!-- Одиночне джерело порівняння -->
+                            <thead>
+                            <tr>
+                                <th>Година (UTC)</th>
+                                <th>Факт PVOutput</th>
+                                @for (src of availableSourcesWithData(); track src) {
+                                    <th>Прогноз {{ src }} (кВт)</th>
+                                    <th>Різниця (кВт)</th>
+                                    <th>Різниця (Вт)</th>
+                                }
+                                <th>Стан (st_s)</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                                @if (loading()) {
+                                    @for (i of [1, 2, 3, 4, 5, 6]; track i) {
+                                        <tr>
+                                            <td>
+                                                <div class="skeleton-box col-time"></div>
+                                            </td>
+                                            <td>
+                                                <div class="skeleton-box col-val"></div>
+                                            </td>
+                                            <td>
+                                                <div class="skeleton-box col-val"></div>
+                                            </td>
+                                            <td>
+                                                <div class="skeleton-box col-val"></div>
+                                            </td>
+                                            <td>
+                                                <div class="skeleton-box col-val"></div>
+                                            </td>
+                                            <td>
+                                                <div class="skeleton-box col-val"></div>
+                                            </td>
+                                        </tr>
+                                    }
+                                } @else if (!comparisonData() || comparisonData()?.hourly_data?.length === 0) {
+                                    <tr>
+                                        <td colspan="6" class="empty-state">
+                                            Немає даних для порівняння на обрану дату.
+                                        </td>
+                                    </tr>
+                                } @else {
+                                    @for (row of comparisonData()?.hourly_data; track row.hour) {
+                                        @let src = availableSourcesWithData()[0];
+                                        @let srcH = getSourceHourly(row, src);
+                                        <tr>
+                                            <td class="time-cell">
+                                                {{ row.hour | number:'2.0-0' }}:00
+                                                - {{ (row.hour + 1) | number:'2.0-0' }}:00
+                                            </td>
+                                            <td>
+                                                @if (syncing()) {
+                                                    <div class="skeleton-box col-val"></div>
+                                                } @else if (row.actual_kw > 0) {
+                                                    <span>{{ row.actual_kw | number:'1.4-4' }} кВт</span>
+                                                } @else {
+                                                    <span class="text-muted">0.0000 кВт</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (srcH && srcH.forecast_kw > 0) {
+                                                    <span class="badge-power" [ngClass]="getSourceBadgeClass(src)">
+                                                        {{ srcH.forecast_kw | number:'1.4-4' }} кВт
+                                                    </span>
+                                                } @else {
+                                                    <span class="text-muted">0.0000 кВт</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (syncing()) {
+                                                    <div class="skeleton-box col-val"></div>
+                                                } @else if (srcH) {
+                                                    <span>{{ srcH.delta_kw > 0 ? '+' : '' }}{{ srcH.delta_kw | number:'1.4-4' }}
+                                                        кВт</span>
+                                                } @else {
+                                                    <span class="text-muted">—</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (syncing()) {
+                                                    <div class="skeleton-box col-val"></div>
+                                                } @else if (srcH) {
+                                                    <span>{{ srcH.delta_watts | number:'1.2-2' }} Вт</span>
+                                                } @else {
+                                                    <span class="text-muted">—</span>
+                                                }
+                                            </td>
+                                            <td>{{ row.st_s }}</td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        }
                     </table>
                 </div>
             }
