@@ -91,9 +91,11 @@ export class ComparisonComponent implements OnInit {
             next: (data) => {
                 this.stations.set(data);
                 if (data.length > 0) {
-                    this.selectedStationId.set(data[0].id);
-                    this.loadModels(data[0].id);
-                    this.loadAvailableDates(data[0].id);
+                    const stationId = data[0].id;
+                    this.selectedStationId.set(stationId);
+                    this.loadModels(stationId, (modelId) => {
+                        this.loadAvailableDates(stationId, modelId);
+                    });
                 } else {
                     this.loading.set(false);
                 }
@@ -105,33 +107,40 @@ export class ComparisonComponent implements OnInit {
         });
     }
 
-    loadModels(stationId: number): void {
+    loadModels(stationId: number, onComplete?: (chosenModelId: number | null) => void): void {
         this.loadingModels.set(true);
         this.generationService.getNeuralModels(stationId).subscribe({
             next: (modelList) => {
                 this.models.set(modelList);
+                let targetModelId: number | null = null;
                 if (modelList.length > 0) {
                     const currentSelected = this.selectedModelId();
                     const exists = modelList.some(m => m.id === currentSelected);
-                    // Якщо користувач уже вибрав модель і вона є для цієї станції — зберігаємо вибір користувача!
-                    if (!currentSelected || !exists) {
-                        this.selectedModelId.set(modelList[0].id);
+                    if (currentSelected && exists) {
+                        targetModelId = currentSelected;
+                    } else {
+                        targetModelId = modelList[0].id;
                     }
-                } else {
-                    this.selectedModelId.set(null);
                 }
+                this.selectedModelId.set(targetModelId);
                 this.loadingModels.set(false);
+                if (onComplete) {
+                    onComplete(targetModelId);
+                }
             },
             error: () => {
                 this.models.set([]);
                 this.selectedModelId.set(null);
                 this.loadingModels.set(false);
+                if (onComplete) {
+                    onComplete(null);
+                }
             }
         });
     }
 
 
-    loadAvailableDates(stationId: number): void {
+    loadAvailableDates(stationId: number, modelId?: number | null): void {
         this.loading.set(true);
         const yesterdayDate = this.getDefaultDate(); // Завжди попередній день (вчора)
         this.selectedDate.set(yesterdayDate);
@@ -139,11 +148,11 @@ export class ComparisonComponent implements OnInit {
         this.comparisonService.getAvailableDates(stationId).subscribe({
             next: (res) => {
                 this.availableDates.set(res.dates);
-                // Завантажуємо порівняння строго на попередній день
-                this.loadComparison(stationId, yesterdayDate);
+                // Завантажуємо порівняння строго на попередній день з коректною моделлю
+                this.loadComparison(stationId, yesterdayDate, false, modelId);
             },
             error: () => {
-                this.loadComparison(stationId, yesterdayDate);
+                this.loadComparison(stationId, yesterdayDate, false, modelId);
             }
         });
     }
@@ -156,8 +165,9 @@ export class ComparisonComponent implements OnInit {
         this.loading.set(true);
         this.error.set(null);
         this.selectedStationId.set(stationId);
-        this.loadModels(stationId);
-        this.loadAvailableDates(stationId);
+        this.loadModels(stationId, (modelId) => {
+            this.loadAvailableDates(stationId, modelId);
+        });
     }
 
     onModelChange(event: Event): void {
@@ -218,15 +228,16 @@ export class ComparisonComponent implements OnInit {
         }
     }
 
-    loadComparison(stationId: number, dateStr: string, forceSync: boolean = false): void {
+    loadComparison(stationId: number, dateStr: string, forceSync: boolean = false, modelId?: number | null): void {
         this.loading.set(true);
         this.error.set(null);
+        const effectiveModelId = (modelId !== undefined ? modelId : this.selectedModelId()) || undefined;
 
         this.comparisonService.getComparison(
             stationId,
             dateStr,
             this.selectedWeatherSource(),
-            this.selectedModelId() || undefined,
+            effectiveModelId,
             forceSync
         ).subscribe({
             next: (res) => {

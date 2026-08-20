@@ -239,9 +239,8 @@ export class WeatherForecastComponent implements OnInit {
 
 
     private getDefaultDate(): string {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        return tomorrow.toISOString().split('T')[0];
+        const today = new Date();
+        return today.toISOString().split('T')[0];
     }
 
     getTodayDate(): string {
@@ -259,9 +258,11 @@ export class WeatherForecastComponent implements OnInit {
             next: (data) => {
                 this.stations.set(data);
                 if (data.length > 0) {
-                    this.selectedStationId.set(data[0].id);
-                    this.loadModels(data[0].id);
-                    this.loadWeather(data[0].id);
+                    const stationId = data[0].id;
+                    this.selectedStationId.set(stationId);
+                    this.loadModels(stationId, (modelId) => {
+                        this.loadWeather(stationId, modelId);
+                    });
                 } else {
                     this.loading.set(false);
                 }
@@ -273,26 +274,34 @@ export class WeatherForecastComponent implements OnInit {
         });
     }
 
-    loadModels(stationId: number): void {
+    loadModels(stationId: number, onComplete?: (chosenModelId: number | null) => void): void {
         this.loadingModels.set(true);
         this.generationService.getNeuralModels(stationId).subscribe({
             next: (modelList) => {
                 this.models.set(modelList);
+                let targetModelId: number | null = null;
                 if (modelList.length > 0) {
                     const currentSelected = this.selectedModelId();
                     const exists = modelList.some(m => m.id === currentSelected);
-                    if (!currentSelected || !exists) {
-                        this.selectedModelId.set(modelList[0].id);
+                    if (currentSelected && exists) {
+                        targetModelId = currentSelected;
+                    } else {
+                        targetModelId = modelList[0].id;
                     }
-                } else {
-                    this.selectedModelId.set(null);
                 }
+                this.selectedModelId.set(targetModelId);
                 this.loadingModels.set(false);
+                if (onComplete) {
+                    onComplete(targetModelId);
+                }
             },
             error: () => {
                 this.models.set([]);
                 this.selectedModelId.set(null);
                 this.loadingModels.set(false);
+                if (onComplete) {
+                    onComplete(null);
+                }
             }
         });
     }
@@ -304,8 +313,9 @@ export class WeatherForecastComponent implements OnInit {
         this.allSourcesGenerationMap.set({});
         this.allSourcesWeatherMap.set({});
         this.forecasts.set([]);
-        this.loadModels(stationId);
-        this.loadWeather(stationId);
+        this.loadModels(stationId, (modelId) => {
+            this.loadWeather(stationId, modelId);
+        });
     }
 
     onModelChange(event: Event): void {
@@ -315,7 +325,7 @@ export class WeatherForecastComponent implements OnInit {
         this.allSourcesGenerationMap.set({});
         const stationId = this.selectedStationId();
         if (stationId) {
-            this.loadWeather(stationId);
+            this.loadSavedGeneration(stationId, modelId);
         }
     }
 
@@ -332,12 +342,12 @@ export class WeatherForecastComponent implements OnInit {
             this.forecasts.set([]);
             const stationId = this.selectedStationId();
             if (stationId) {
-                this.loadWeather(stationId);
+                this.loadWeather(stationId, this.selectedModelId());
             }
         }
     }
 
-    loadWeather(stationId: number): void {
+    loadWeather(stationId: number, modelId?: number | null): void {
         if (this.hourlyTimestamps().length === 0) {
             this.loading.set(true);
         }
@@ -374,7 +384,8 @@ export class WeatherForecastComponent implements OnInit {
                 }
                 this.forecasts.set(primaryRows);
                 this.loading.set(false);
-                this.loadSavedGeneration(stationId);
+                const effectiveModelId = modelId !== undefined ? modelId : this.selectedModelId();
+                this.loadSavedGeneration(stationId, effectiveModelId);
             },
             error: () => {
                 this.error.set('Не вдалося отримати збережений прогноз погоди');
@@ -383,12 +394,12 @@ export class WeatherForecastComponent implements OnInit {
         });
     }
 
-    loadSavedGeneration(stationId: number): void {
+    loadSavedGeneration(stationId: number, modelId?: number | null): void {
         this.loadingGen.set(true);
         const date = this.selectedDate();
-        const modelId = this.selectedModelId() || undefined;
+        const effectiveModelId = (modelId !== undefined ? modelId : this.selectedModelId()) || undefined;
 
-        this.generationService.getSavedForecast(stationId, date, 'ALL', modelId).subscribe({
+        this.generationService.getSavedForecast(stationId, date, 'ALL', effectiveModelId).subscribe({
             next: (res) => {
                 const fullMap: Record<string, Record<string, {
                     predicted_power_watts: number;
