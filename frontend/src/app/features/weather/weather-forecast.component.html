@@ -73,12 +73,7 @@
                 <button class="btn btn-secondary"
                         [disabled]="fetching() || loading() || selectedSources().length === 0 || isWeatherComplete()"
                         (click)="fetchSelectedWeather(false)">
-                    @if (fetching()) {
-                        <span class="spinner spinner-sm" style="vertical-align: middle; margin-right: 6px;"></span>
-                        Завантаження...
-                    } @else {
-                        {{ weatherButtonLabel() }}
-                    }
+                    {{ weatherButtonLabel() }}
                 </button>
 
                 @if (isWeatherComplete() && selectedSources().length > 0 && hourlyTimestamps().length > 0) {

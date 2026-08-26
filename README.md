@@ -10,9 +10,9 @@
 
 ## Технологічний стек
 
-* **Backend:** Python 3.12+, FastAPI
-* **Frontend:** Angular 22.x
-* **Database:** PostgreSQL 16+
+* **Backend:** Python 3.10, FastAPI
+* **Frontend:** Angular 22
+* **Database:** PostgreSQL 16
 
 ## Структура бази даних
 
