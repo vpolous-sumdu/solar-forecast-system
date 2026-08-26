@@ -113,9 +113,6 @@ export class WeatherForecastComponent implements OnInit {
     });
 
     weatherButtonLabel = computed<string>(() => {
-        if (this.fetching()) {
-            return 'Завантаження...';
-        }
         const needed = this.sourcesNeedingWeather();
         const selected = this.selectedSources();
 
