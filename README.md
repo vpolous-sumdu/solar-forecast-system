@@ -1,6 +1,6 @@
 # ☀️ Solar Forecast System
 
-## 🚀 Інфраструктура
+## Інфраструктура
 
 * **Frontend:** [Vercel](https://vercel.com)
 * **Backend:** [Render](https://solar-forecast-system.onrender.com) (API Docs: [solar-forecast-system.onrender.com/docs](https://solar-forecast-system.onrender.com/docs))
@@ -8,13 +8,13 @@
 
 > **Режим сну:** Через особливості безкоштовного тарифу Render бекенд засинає після 15 хвилин неактивності. Перший запит після простою може займати до 1 хвилини.
 
-## 🧰 Технологічний стек
+## Технологічний стек
 
 * **Backend:** Python 3.12+, FastAPI
 * **Frontend:** Angular 22.x
 * **Database:** PostgreSQL 16+
 
-## 🗄️ Структура та зв'язки бази даних
+## Структура бази даних
 
 ```mermaid
 erDiagram
