@@ -2,8 +2,8 @@ name: Daily Solar Generation Forecast Cron
 
 on:
   schedule:
-    # 19:55 UTC відповідає 22:55 за київським часом (GMT+3 влітку)
-    - cron: '55 19 * * *'
+    # 17:00 UTC відповідає 20:00 за київським часом (GMT+3 влітку)
+    - cron: '0 17 * * *'
   workflow_dispatch: # Дозволяє вручну натиснути "Run workflow" за потреби
 
 jobs:
